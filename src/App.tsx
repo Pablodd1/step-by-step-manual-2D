@@ -8,6 +8,7 @@ import MaterialsPage from "./pages/MaterialsPage";
 import NotFound from "./pages/NotFound";
 import StudioPage from "./pages/StudioPage";
 import TaskSimulatorPage from "./pages/TaskSimulatorPage";
+import WallpaperTrainingPage from "./wallpaper/WallpaperTrainingPage";
 
 export function App() {
   return (
@@ -16,6 +17,8 @@ export function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/materials" element={<MaterialsPage />} />
+          <Route path="/guides/paste-the-wall" element={<WallpaperTrainingPage />} />
+          <Route path="/training/wallpaper" element={<WallpaperTrainingPage />} />
           <Route path="/guides/:slug" element={<GuidePage />} />
           <Route path="/calculator" element={<CalculatorPage />} />
           <Route path="/studio" element={<StudioPage />} />

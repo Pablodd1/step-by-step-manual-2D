@@ -1,70 +1,90 @@
-# PLUMB × UNITEC USA — Interactive 3D CAD Step-by-Step Manual Engine (`step-by-step-manual-2D`)
+# PLUMB — Interactive 2D/3D Installation Training
 
-> **THE ANSWER IN ONE LINE:**
-> *It's not a video OR a prompt OR pictures. One unified step-data file (`contracts/blueprintData.ts`) generates the interactive 3D app, the HD 1080p30 videos, and the printable step sheets.*
+A React, TypeScript and Three.js repository for evidence-linked wallcovering demonstrations and UNITEC visual-training prototypes.
 
-![Step 10 — Baseboard Crease Trim Cut in CAD Drawing Mode](docs/screenshots/cad-v4-step10-trim.png)
+## Current release: 14-step paste-the-wall lesson
 
----
+Open `/guides/paste-the-wall` (also available at `/training/wallpaper`). The existing home-page **2D/3D Field Guide** action reaches this lesson.
 
-## 1. Visual Gallery (Hardware D3D11 WebGL Renders)
+The new module in `src/wallpaper/` provides:
 
-| Step 0 · 3D Parts & Tools Tray | Step 1 · Electrical Lockout Safety Gate |
-| :---: | :---: |
-| ![Step 0 Parts Tray](docs/screenshots/cad-v4-step0-tray.png) | ![Step 1 Safety Gate](docs/screenshots/cad-v4-step1-safety.png) |
+- A complete sequence from product verification and electrical safety through preparation, layout, plumb, measurement, paste application, dry-drop hanging, smoothing, trimming, pattern matching, outlet work, cleaning and final inspection.
+- One instructional contract driving the Three.js scene, operation-specific SVG drawings, playback, global timeline and A4 field sheet.
+- Play/pause, reverse playback/pause, previous/next, speed control, timeline scrubbing, camera orbit/zoom/reset and room/front views.
+- A real training gate: later wet-work and installation steps cannot be entered by playback, step navigation or scrubbing until electrical safety is acknowledged. The acknowledgement does not isolate power.
+- Step-specific tools, materials, reasons, warnings, inspection checks and evidence links.
+- Explicit labels separating manufacturer general guidance, adhesive-manufacturer guidance and reconstructed demonstration geometry.
 
-| Step 8 · Track B Peel & Stick (`FT_13`) Realistic 3D | Step 12 · Outlet 4-Flap X-Relief Cut |
-| :---: | :---: |
-| ![Step 8 Realistic 3D](docs/screenshots/cad-v4-step8-realistic.png) | ![Step 12 Outlet X-Cut](docs/screenshots/cad-v4-step12-outlet.png) |
+**Approval boundary:** this is general teaching guidance with reconstructed graphics, not manufacturer-approved training for a specified roll or adhesive. Confirm the actual roll label, adhesive datasheet, site risk assessment and electrical requirements before work. The supplied Kami viewer requires sign-in and its document has not been reviewed; no instruction is attributed to it.
 
----
+## Repository reality and capability boundaries
 
-## 2. Open-Source 3D CAD Line-Art Shader Pipeline (`src/scene/lineArtMaterials.ts`)
+This GitHub repository is currently a **frontend-only React/Vite application**.
 
-Standard WebGL `THREE.LineBasicMaterial` is clamped to `1.0 px` on Windows D3D11/ANGLE and `THREE.EdgesGeometry` produces zero silhouette outlines on curved cylinders (paste rollers, spray bottles, wallpaper rolls, screwdriver handles).
+- It does not contain the Hono, Drizzle, MySQL or real authentication backend used by the separate local full-stack prototype.
+- `src/lib/trpc.ts` is a browser-local demo adapter, not tRPC or server persistence.
+- Browser `localStorage` profiles, uploads and review states are demonstrations only. They do not synchronize across devices and are not a production moderation or asset-storage system.
+- The new wallpaper module has scene-matched browser printing. It is **not yet connected to deterministic HD video export**.
+- Earlier simulator/video code and screenshots are prototypes, not proof of a unified verified 1080p production pipeline for every guide.
+- `contracts/blueprintData.ts`, `contracts/tasks/wallpaperTask.ts` and `src/wallpaper/guide.ts` are separate authorities for different prototypes. Do not treat them as one synchronized data source.
+- A realistic render does not establish manufacturer installation approval.
 
-Our engine solves this using a **3-Pass CAD Line-Art Shader Pipeline** adapted from MIT-licensed open-source reference projects ([`Nutlope/bygga`](https://github.com/Nutlope/bygga) and **Three.js official fat-line addons**):
+## Routes
 
-1. **Pass 1 — 4-Band Discrete Cel/Toon Shader (`createFaceMaterial`)**:
-   - Renders near-white paper faces (`#faf9f5`) with 4 discrete luminance bands and a warm active-part tint (`#fff3c4`) plus `polygonOffset` so ink lines never z-fight.
-2. **Pass 2 — Inverted-Hull Screen-Space Silhouette Shader (`createHullMaterial`, `THREE.BackSide`)**:
-   - Extrudes vertices outward in clip space along averaged `hullDir` normals (`clip.xy += dir * uWidth * 2.0 / uRes * clip.w`), wrapping every curved cylinder, roller, bottle, and bevelled `RoundedBoxGeometry` tool in a crisp `2px` outer ink contour.
-3. **Pass 3 — Screen-Space Anti-Aliased Fat Crease Lines (`LineSegments2` + `LineMaterial`)**:
-   - Renders `2.15px` ink creases on active tools/parts and `1.35px` muted creases (`#8a867e`) on background context.
-4. **Screen-Space Vector SVG Callouts & 2D Tool Line-Art (`src/components/ManualLineArt.tsx`)**:
-   - **Corner Hardware/Tool Box (`.bobby-hw-box`)**: Displays 2D vector line-art illustrations (`strokeWidth={1.8}`) and quantities (`1×`, `2×`) directly below the step number.
-   - **Circular `DETAIL · 3.5×` Magnifying Loupe (`#inset`)**: Dedicated telephoto `24°` FOV macro pass locked onto the active 3D tool tip, connected via a tangent-circumference SVG leader line (`#leads`) and overlaid with vector action/rotation arrows (`arrowPath` & `arcArrow`).
-   - **3D-Projected Architectural Dimension Lines (`dimensionLineSvg`)**: Live screen-space CAD dimension ticks (`53 cm DROP`, `255 cm`, `416 cm`).
+| Route | Purpose |
+| --- | --- |
+| `/` | Guide library and entry points |
+| `/guides/paste-the-wall` | New evidence-linked 14-step lesson |
+| `/training/wallpaper` | Alias for the new lesson |
+| `/simulator` | Earlier granular task simulator prototype |
+| `/guides/:slug` | Earlier shared guide player |
+| `/materials` | Three-product UNITEC visual-fidelity pilot |
+| `/calculator` | Wallpaper and panel estimation prototypes |
+| `/studio` | Browser-local contribution/review demonstration |
 
----
+For static hosting without SPA rewrites, enter through `/` and use in-app navigation.
 
-## 3. Complete Blueprint Architecture (`/simulator`)
+## Architecture
 
-- **3 Complete 12-Step Tracks (+ 36 Granular Sub-Operations)**:
-  - **Track A · Paste-the-Wall Wallpaper (`EN-233`)**
-  - **Track B · Peel-and-Stick / UNITEC `FT_13` Self-Adhesive Marble Roll (`0.60 × 2.80 m`)**
-  - **Track C · UNITEC `FT_03` PVC Marble Sheet & `FT_15` WPC Interior Panel with `FT_27` PEGATEC Adhesive**
-- **Step 0 — 3D Parts & Tools Tray**: Lays out all 12 tools and materials in 3D with non-overlapping projected HTML part chips and an `ACTUAL SIZE` detail loupe.
-- **Interactive Electrical Lockout Safety Gate**: Mandatory verification banner on electrical receptacle steps (`Step 1` and `Step 12`).
-- **Live Roll & Pattern Calculator + "Don't Guess" Conflict Matrix**: Side-by-side comparison of **Formula A (Pro Strip-by-Strip with pattern repeat rounding)** vs. **Formula B (Area + Waste % approximation)** across `52 cm`, `53 cm`, and `60 cm` (`FT_13`) widths, plus a side-by-side table of industry source conflicts (roll widths, paint cure times, adhesive cure times).
-- **One-Data-File Outputs**:
-  - **Printable Step Sheets Generator**: Steps deterministically through all 12 steps in `Drawing (CAD)` mode and composites each card with its circular `3.5×` detail loupe for `window.print()`.
-  - **HD Video Factory**: 4 capture pipelines (Deterministic Headless Frame-by-Frame PNG → FFmpeg `1080p30`, WebCodecs `canvas-record`, in-browser `30 fps` `MediaRecorder` WebM stream, and Printable Sheet renderer).
-  - **Contribution / Moderation System**: Transition guides through `Draft → Review → Approved` alongside the **6-Phase Build Plan** and **Copy-Ready Master Developer Prompt**.
+```text
+contracts/
+  blueprintData.ts             Earlier CAD guide data
+  tasks/wallpaperTask.ts       Earlier granular simulator task data
+  guides/                      Earlier shared and UNITEC guide data
+src/
+  wallpaper/
+    guide.ts                   New 14-step instruction, evidence and gate contract
+    WallpaperScene.ts          Deterministic operation-specific Three.js choreography
+    ReferenceDrawing.tsx       Reconstructed per-step SVG figures
+    WallpaperTrainingPage.tsx  Timeline, playback, evidence and print interface
+    wallpaper.css              Responsive technical workspace and A4 layout
+  scene/                       Earlier CAD/PBR scene experiments
+  pages/                       Earlier route-level prototypes
+tests/
+  wallpaper-guide-v3.test.ts   New instructional and provenance regression tests
+  wallpaper-task.test.ts       Earlier simulator/toolpath tests
+  guides-and-calculator.test.ts Earlier guide/calculator tests
+```
 
----
+### New-module contract
 
-## 4. Open-Source Stack & References
+Every new step has a stable ID, phase, full and short title, instruction, reason, tools, materials, inspection check, operation, animation duration and evidence IDs. `canAccessStep()` is the electrical-gate authority. `seek(stepIndex, progress, operation)` reconstructs scene state deterministically rather than accumulating unrelated animations.
 
-- **[`Nutlope/bygga`](https://github.com/Nutlope/bygga) (MIT)** — Open-source 3D manual generator (`LineSegments2` + `BackSide` hull silhouette shader + 4-band cel shader + vector `ToolArt`/`Figure`).
-- **[`loloop00/3D-IKEA-instructions`](https://github.com/loloop00/3D-IKEA-instructions)** — Dual-viewport circular `#inset` close-up loupe + `#leads` SVG leader line pattern.
-- **[`gkjohnson/three-edge-projection`](https://github.com/gkjohnson/three-edge-projection) & [`three-mesh-bvh`](https://github.com/gkjohnson/three-mesh-bvh) (MIT)** — Silhouette/crease projection & hidden-line removal for CAD technical illustrations.
-- **[`OmarShehata/webgl-outlines`](https://github.com/OmarShehata/webgl-outlines) (MIT)** — Screen-space normal/depth/surface-ID edge detection in Three.js.
-- **[`mrdoob/three.js`](https://github.com/mrdoob/three.js/) (MIT)** — Core 3D WebGL engine, `LineSegments2`, `LineMaterial`, and `RoundedBoxGeometry`.
+The complete timeline is 111 seconds. This is animation time, not estimated installation time.
 
----
+### Add a product-specific lesson
 
-## 5. Quick Start
+1. Obtain the current SKU-specific roll label, installation manual, adhesive datasheet, dimensions, pattern repeat/match, safety and cleaning documents, plus usage rights.
+2. Record each source and its scope. Do not substitute generic instructions for missing product facts.
+3. Author a separate method-specific contract. Paste-the-wall, paste-the-paper, pre-pasted, peel-and-stick and rigid panels must not share incorrect choreography.
+4. Reconstruct geometry only where necessary and label it as reconstructed. Catalogue imagery is not manufacturing CAD or a complete PBR scan.
+5. Link original manual pages to steps only when the document is accessible and reviewed.
+6. Test instructional order, safety gates, evidence references, forward/reverse playback, scrubbing, print and mobile behavior in the real browser.
+7. Obtain editorial/client approval separately from manufacturer installation approval.
+
+## Run locally
+
+Requirements: Node.js 20+ and npm.
 
 ```bash
 npm install
@@ -72,3 +92,40 @@ npm test
 npm run build
 npm run dev
 ```
+
+`npm run build` performs TypeScript checking and the Vite production build. Do not change the build script to hide upstream failures.
+
+## Verification status
+
+The new module was independently checked against this repository's React, Three.js, TypeScript, Vite and Vitest versions: six new tests passed and a clean TypeScript/Vite production build completed.
+
+The full local dynamic prototype also passed its 10-test combined suite and production build. In that environment, the new route was cold-loaded at desktop and 390 px mobile widths. Blocked scrubbing, electrical-gate release, match/outlet choreography, forward play/pause, reverse playback/pause, evidence dialog and the three-page A4 field sheet were exercised. The mobile page had no horizontal overflow; browser runs reported no console errors, page errors or failed requests.
+
+Those results are not a claim that every earlier prototype path has the same verification status. Run this repository's complete test/build/browser release check after cloning or making changes.
+
+## Earlier CAD prototype gallery
+
+These images document the earlier line-art prototype, not approval or verification of the new 14-step lesson.
+
+| Parts/tools tray | Electrical safety prototype |
+| :---: | :---: |
+| ![Earlier parts tray](docs/screenshots/cad-v4-step0-tray.png) | ![Earlier safety gate](docs/screenshots/cad-v4-step1-safety.png) |
+
+| Realistic material prototype | Outlet relief-cut prototype |
+| :---: | :---: |
+| ![Earlier realistic step](docs/screenshots/cad-v4-step8-realistic.png) | ![Earlier outlet step](docs/screenshots/cad-v4-step12-outlet.png) |
+
+The earlier renderer explores `LineSegments2`, inverted-hull silhouettes, cel-shaded faces, SVG leader lines and detail loupes. Those techniques can be reused selectively, but they do not replace correct installation data or safety enforcement.
+
+## Known limits and next work
+
+- Connect an accessible product manual/PDF and original page references when supplied.
+- Keep product-specific wallpaper methods and rigid-panel workflows separate.
+- Replace or isolate browser-local demo authentication, moderation and uploads before presenting them as production features.
+- Integrate deterministic HD export with the new scene only through the same timeline and verify codec, dimensions, frame rate, frame count and visual frames.
+- Address bundle size with route-level code splitting before adding more scene engines.
+- UNITEC installation content still awaits complete SKU-specific manufacturer evidence and approval.
+
+## Sources and references
+
+See `CREDITS.md` for instructional sources, product imagery attribution and open-source references. Key architecture references include [Flat Pack](https://sael.net/flatpack/?ref=gunpla) and [Nutlope/bygga](https://github.com/Nutlope/bygga) (MIT). No code was copied from Flat Pack or Bygga into the new module.
