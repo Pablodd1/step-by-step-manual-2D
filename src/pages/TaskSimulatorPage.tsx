@@ -2,16 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import {
   AlertTriangle,
+  BookOpen,
   Bot,
+  Box,
   Camera,
   Check,
   ClipboardCopy,
+  Crosshair,
   Download,
   ExternalLink,
   FileText,
-  Hand,
   Layers,
   Pause,
+  PenTool,
   Play,
   Route,
   Scissors,
@@ -21,9 +24,11 @@ import {
   Sparkles,
   Timer,
   Wrench,
+  X,
+  ZoomIn,
 } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
-import { TaskSimulatorScene } from "@/scene/TaskSimulatorScene";
+import { TaskSimulatorScene, type SimulatorViewMode } from "@/scene/TaskSimulatorScene";
 import {
   MATERIALS,
   PHASE_COLORS,
@@ -44,11 +49,13 @@ import {
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const fmtMinutes = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60 ? `${m % 60} min` : ""}` : `${m} min`);
 
-const CUTTING_SHORTCUTS = [
-  { stepIndex: 15, label: "16 · Table Cut (Knife + Straightedge)" },
-  { stepIndex: 21, label: "22 · Drop 1 Ceiling & Baseboard Cut" },
-  { stepIndex: 26, label: "27 · Drop 2 Trim & Peel" },
-  { stepIndex: 30, label: "31 · Outlet X-Relief Cut (4 Flaps)" },
+const STEP_ZOOM_SHORTCUTS = [
+  { stepIndex: 1, at: 0.5, label: "02 · Remove Outlet Plate (Screwdriver Zoom)" },
+  { stepIndex: 7, at: 0.52, label: "08 · Patch Holes (Putty Knife Zoom)" },
+  { stepIndex: 15, at: 0.58, label: "16 · Table Cut (30° Knife + Straightedge)" },
+  { stepIndex: 21, at: 0.72, label: "22 · Ceiling & Baseboard Trim Cut" },
+  { stepIndex: 22, at: 0.5, label: "23 · Seam Sponge Wipe" },
+  { stepIndex: 30, at: 0.52, label: "31 · Outlet X-Relief Cut (4 Flaps)" },
 ];
 
 export default function TaskSimulatorPage() {
@@ -66,6 +73,12 @@ export default function TaskSimulatorPage() {
   const [speed, setSpeed] = useState(1);
   const [autoCam, setAutoCam] = useState(true);
   const [showPath, setShowPath] = useState(true);
+  const [showMacro, setShowMacro] = useState(() => params.get("macro") !== "0");
+  const [exploded, setExploded] = useState(() => params.get("exploded") === "1");
+  const [viewMode, setViewMode] = useState<SimulatorViewMode>(() =>
+    params.get("view") === "drawing" ? "drawing" : "room",
+  );
+  const [showManual, setShowManual] = useState(() => params.get("manual") === "1");
   const [surfaceMode, setSurfaceMode] = useState<SimulatorSurfaceMode>(() => {
     const m = params.get("surface") as SimulatorSurfaceMode | null;
     return m && SIMULATOR_SURFACE_MODES.some((s) => s.id === m) ? m : "botanical";
@@ -104,6 +117,18 @@ export default function TaskSimulatorPage() {
   useEffect(() => {
     sceneRef.current?.setShowToolpath(showPath);
   }, [showPath]);
+
+  useEffect(() => {
+    sceneRef.current?.setShowMacroZoom(showMacro);
+  }, [showMacro]);
+
+  useEffect(() => {
+    sceneRef.current?.setExploded(exploded);
+  }, [exploded]);
+
+  useEffect(() => {
+    sceneRef.current?.setViewMode(viewMode);
+  }, [viewMode]);
 
   useEffect(() => {
     sceneRef.current?.setSurfaceMode(surfaceMode);
@@ -189,8 +214,10 @@ export default function TaskSimulatorPage() {
       <main className="sim-main">
         <header className="sim-heading">
           <div>
-            <p className="mono-kicker acid-text">3D HUMAN + MACHINE SIMULATOR · OFFICIAL UNITEC FICHAS TÉCNICAS (FT_03 / FT_13 / FT_15 / FT_27)</p>
-            <h1>Full-body human installer, real cuts & machine toolpaths</h1>
+            <p className="mono-kicker acid-text">
+              3D STEP-ZOOM ASSEMBLY &amp; CUTTING VISUALIZER · OFFICIAL UNITEC FICHAS TÉCNICAS (FT_03 / FT_13 / FT_15 / FT_27)
+            </p>
+            <h1>Step-by-step 3D tool choreography &amp; 3.5× macro zoom</h1>
             <p className="sim-sub">
               {WALLPAPER_TASK.length} steps · 4.16 × 2.55 m wall · 8 drops · ≈{fmtMinutes(TASK_REAL_WORLD_MINUTES)} on site ·{" "}
               <strong>{activeSurface.spec}</strong>
@@ -210,27 +237,35 @@ export default function TaskSimulatorPage() {
                   {m.label}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setShowManual((v) => !v)}
+                className={showManual ? "primary-button" : "secondary-button"}
+                style={{ padding: "5px 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+              >
+                <BookOpen size={13} /> {showManual ? "Hide Manual Drawer" : `Side-by-Side ${activeSurface.fichaCode} Manual`}
+              </button>
               <a
                 href={activeSurface.fichaUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="secondary-button"
+                className="ghost-button"
                 style={{ padding: "5px 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}
               >
-                <FileText size={13} /> Open {activeSurface.fichaCode} PDF <ExternalLink size={12} />
+                <FileText size={13} /> {activeSurface.fichaCode} PDF <ExternalLink size={12} />
               </a>
             </div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px", alignItems: "center" }}>
               <span className="mono-kicker" style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginRight: "4px" }}>
-                <Scissors size={13} /> Jump to real human cuts:
+                <Scissors size={13} /> Step-zoom close-ups:
               </span>
-              {CUTTING_SHORTCUTS.map((c) => (
+              {STEP_ZOOM_SHORTCUTS.map((c) => (
                 <button
                   key={c.stepIndex}
                   type="button"
                   onClick={() => {
                     setPlaying(false);
-                    goTo(c.stepIndex, 0.58);
+                    goTo(c.stepIndex, c.at);
                   }}
                   className={index === c.stepIndex ? "primary-button" : "ghost-button"}
                   style={{ padding: "4px 9px", fontSize: "11.5px" }}
@@ -256,51 +291,131 @@ export default function TaskSimulatorPage() {
 
         <section className="sim-grid">
           <div className="sim-stage-col">
-            <div className="sim-stage" ref={stageRef}>
-              {webglError && (
-                <div className="sim-error">
-                  <AlertTriangle size={18} /> {webglError}
+            <div className={`sim-stage-split ${showManual ? "with-manual" : ""}`}>
+              <div className="sim-stage" ref={stageRef}>
+                {webglError && (
+                  <div className="sim-error">
+                    <AlertTriangle size={18} /> {webglError}
+                  </div>
+                )}
+                <div className="sim-hud">
+                  <span className="sim-chip" style={{ background: PHASE_COLORS[step.phase] }}>
+                    {step.phase.toUpperCase()}
+                  </span>
+                  <strong>
+                    {String(index + 1).padStart(2, "0")} / {WALLPAPER_TASK.length} · {step.title}
+                  </strong>
+                </div>
+                <div className="sim-hud-tools">
+                  <span>
+                    <Wrench size={13} /> {TOOLS[step.tool].name}
+                    {step.secondaryTool ? ` + ${TOOLS[step.secondaryTool].name}` : ""}
+                  </span>
+                  {step.product && (
+                    <span>
+                      <Sparkles size={13} /> {step.product}
+                    </span>
+                  )}
+                </div>
+                <div className="sim-hud-right">
+                  <button
+                    className={autoCam ? "active" : ""}
+                    onClick={() => setAutoCam((v) => !v)}
+                    title="Choreographed step-zoom camera"
+                  >
+                    <Camera size={13} /> Step Zoom
+                  </button>
+                  <button
+                    className={showMacro ? "active" : ""}
+                    onClick={() => setShowMacro((v) => !v)}
+                    title="Toggle 3.5× live 3D telephoto macro inset locked onto the tool tip"
+                  >
+                    <ZoomIn size={13} /> 3.5× Inset
+                  </button>
+                  <button
+                    className={viewMode === "drawing" ? "active" : ""}
+                    onClick={() => setViewMode((m) => (m === "room" ? "drawing" : "room"))}
+                    title="Switch between photorealistic 3D Room view and technical Line-Drawing view"
+                  >
+                    <PenTool size={13} /> {viewMode === "drawing" ? "Drawing" : "Room"}
+                  </button>
+                  <button
+                    className={exploded ? "active" : ""}
+                    onClick={() => setExploded((v) => !v)}
+                    title="Explode the 5 wall layers (Wall, Primer, Adhesive, Drops, Laser/Hardware) along +Z"
+                  >
+                    <Box size={13} /> Explode
+                  </button>
+                  <button
+                    className={showPath ? "active" : ""}
+                    onClick={() => setShowPath((v) => !v)}
+                    title="Show the robot toolpath and wall frame axes"
+                  >
+                    <Route size={13} /> Toolpath
+                  </button>
+                </div>
+
+                {showMacro && (
+                  <div className="sim-macro-pip" aria-hidden="true">
+                    <div className="sim-macro-header">
+                      <span>
+                        <Crosshair size={11} /> 3.5× STEP ZOOM
+                      </span>
+                      <code>LIVE 3D</code>
+                    </div>
+                    <div className="sim-macro-reticle" />
+                    <div className="sim-macro-footer">
+                      <span>{TOOLS[step.tool].name}</span>
+                      <code>{step.primitive.toUpperCase()}</code>
+                    </div>
+                  </div>
+                )}
+
+                <div className="sim-telemetry">
+                  <span>TOOL TIP</span>
+                  <code>
+                    x {sample.primary.p[0].toFixed(3)} · y {sample.primary.p[1].toFixed(3)} · z {sample.primary.p[2].toFixed(3)} m
+                  </code>
+                  <span className={sample.primary.contact ? "contact on" : "contact"}>{sample.primary.contact ? "CONTACT" : "TRAVEL"}</span>
+                  {sample.primary.contact && step.forceN ? <span>{step.forceN} N</span> : null}
+                </div>
+              </div>
+
+              {showManual && (
+                <div className="sim-manual-drawer">
+                  <div className="sim-manual-header">
+                    <div>
+                      <span className="mono-kicker acid-text">OFFICIAL UNITEC FICHA TÉCNICA · {activeSurface.fichaCode}</span>
+                      <strong>{activeSurface.label}</strong>
+                    </div>
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+                      <a
+                        href={activeSurface.fichaUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ghost-button"
+                        style={{ padding: "4px 8px", fontSize: "11px" }}
+                      >
+                        New Tab <ExternalLink size={11} />
+                      </a>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        onClick={() => setShowManual(false)}
+                        aria-label="Close manual drawer"
+                        style={{ width: "28px", height: "28px" }}
+                      >
+                        <X size={15} />
+                      </button>
+                    </div>
+                  </div>
+                  <iframe
+                    src={activeSurface.fichaUrl}
+                    title={`UNITEC Ficha Técnica ${activeSurface.fichaCode}`}
+                    className="sim-manual-iframe"
+                  />
                 </div>
               )}
-              <div className="sim-hud">
-                <span className="sim-chip" style={{ background: PHASE_COLORS[step.phase] }}>
-                  {step.phase.toUpperCase()}
-                </span>
-                <strong>
-                  {String(index + 1).padStart(2, "0")} / {WALLPAPER_TASK.length} · {step.title}
-                </strong>
-              </div>
-              <div className="sim-hud-tools">
-                <span>
-                  <Wrench size={13} /> {TOOLS[step.tool].name}
-                  {step.secondaryTool ? ` + ${TOOLS[step.secondaryTool].name}` : ""}
-                </span>
-                {step.product && (
-                  <span>
-                    <Sparkles size={13} /> {step.product}
-                  </span>
-                )}
-                <span>
-                  <Hand size={13} /> {step.hand === "both" ? "Both hands" : `${step.hand} hand`}
-                  {step.ppe.length > 0 ? ` · ${step.ppe.join(", ")}` : ""}
-                </span>
-              </div>
-              <div className="sim-hud-right">
-                <button className={autoCam ? "active" : ""} onClick={() => setAutoCam(true)} title="Camera follows the work">
-                  <Camera size={13} /> Auto camera
-                </button>
-                <button className={showPath ? "active" : ""} onClick={() => setShowPath((v) => !v)} title="Show the robot toolpath and wall frame axes">
-                  <Route size={13} /> Toolpath
-                </button>
-              </div>
-              <div className="sim-telemetry">
-                <span>TOOL TIP</span>
-                <code>
-                  x {sample.primary.p[0].toFixed(3)} · y {sample.primary.p[1].toFixed(3)} · z {sample.primary.p[2].toFixed(3)} m
-                </code>
-                <span className={sample.primary.contact ? "contact on" : "contact"}>{sample.primary.contact ? "CONTACT" : "TRAVEL"}</span>
-                {sample.primary.contact && step.forceN ? <span>{step.forceN} N</span> : null}
-              </div>
             </div>
 
             <div className="sim-playback">
@@ -414,48 +529,62 @@ export default function TaskSimulatorPage() {
 
         <section className="sim-bom">
           <div>
-            <p className="mono-kicker acid-text">MATERIALS & OFFICIAL UNITEC FICHAS TÉCNICAS</p>
+            <p className="mono-kicker acid-text">INTERACTIVE KIT &amp; MATERIALS · CLICK ANY PART TO ZOOM TO ITS STEP</p>
             <table>
               <thead>
                 <tr>
                   <th>Item</th>
                   <th>Quantity</th>
-                  <th>Used in steps</th>
+                  <th>Jump to step</th>
                 </tr>
               </thead>
               <tbody>
-                {MATERIALS.map((m) => (
-                  <tr key={m.item}>
-                    <td>
-                      <strong>
-                        {m.item}{" "}
-                        {m.fichaUrl && (
-                          <a
-                            href={m.fichaUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            style={{ color: "var(--acid)", fontSize: "11px", marginLeft: "6px", textDecoration: "underline" }}
-                          >
-                            [PDF]
-                          </a>
-                        )}
-                      </strong>
-                      <small>{m.note}</small>
-                    </td>
-                    <td>{m.quantity}</td>
-                    <td>
-                      {m.usedIn
-                        .map((id) => WALLPAPER_TASK.findIndex((s) => s.id === id) + 1)
-                        .filter((n) => n > 0)
-                        .join(", ")}
-                    </td>
-                  </tr>
-                ))}
+                {MATERIALS.map((m) => {
+                  const stepNumbers = m.usedIn
+                    .map((id) => WALLPAPER_TASK.findIndex((s) => s.id === id) + 1)
+                    .filter((n) => n > 0);
+                  const firstStepIdx = (stepNumbers[0] ?? 1) - 1;
+                  return (
+                    <tr
+                      key={m.item}
+                      onClick={() => {
+                        setPlaying(false);
+                        goTo(firstStepIdx, 0.5);
+                      }}
+                      style={{ cursor: "pointer" }}
+                      title={`Click to jump to Step ${firstStepIdx + 1}`}
+                    >
+                      <td>
+                        <strong>
+                          {m.item}{" "}
+                          {m.fichaUrl && (
+                            <a
+                              href={m.fichaUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              style={{ color: "var(--acid)", fontSize: "11px", marginLeft: "6px", textDecoration: "underline" }}
+                            >
+                              [PDF]
+                            </a>
+                          )}
+                        </strong>
+                        <small>{m.note}</small>
+                      </td>
+                      <td>{m.quantity}</td>
+                      <td>
+                        <span style={{ color: "var(--acid)", fontFamily: "var(--mono)", fontSize: "11.5px" }}>
+                          {stepNumbers.join(", ")}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
           <div>
-            <p className="mono-kicker acid-text">TOOLS</p>
+            <p className="mono-kicker acid-text">PRECISION 3D TOOLS · CLICK TO INSPECT IN STEP-ZOOM</p>
             <table>
               <thead>
                 <tr>
@@ -466,14 +595,27 @@ export default function TaskSimulatorPage() {
               <tbody>
                 {Object.entries(TOOLS)
                   .filter(([id]) => !["hands", "clock", "plate", "dropCorner"].includes(id))
-                  .map(([id, t]) => (
-                    <tr key={id}>
-                      <td>
-                        <strong>{t.name}</strong>
-                      </td>
-                      <td>{t.spec}</td>
-                    </tr>
-                  ))}
+                  .map(([id, t]) => {
+                    const toolStepIdx = WALLPAPER_TASK.findIndex((s) => s.tool === id || s.secondaryTool === id);
+                    return (
+                      <tr
+                        key={id}
+                        onClick={() => {
+                          if (toolStepIdx >= 0) {
+                            setPlaying(false);
+                            goTo(toolStepIdx, 0.52);
+                          }
+                        }}
+                        style={{ cursor: toolStepIdx >= 0 ? "pointer" : "default" }}
+                        title={toolStepIdx >= 0 ? `Click to inspect ${t.name} in Step ${toolStepIdx + 1}` : undefined}
+                      >
+                        <td>
+                          <strong>{t.name}</strong>
+                        </td>
+                        <td>{t.spec}</td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
             <p className="sim-note">

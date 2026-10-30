@@ -4801,3 +4801,26 @@ a.\[a\&\]\:hover\:text-accent-foreground:hover {
   .sim-hud { right: 12px; top: 54px; }
   .sim-hud-tools { max-width: 70%; }
 }
+
+
+/* === 3.5X STEP ZOOM PIP, EXPLODED VIEW & MANUAL DRAWER OVERRIDES === */
+.sim-stage-split { display: grid; grid-template-columns: minmax(0, 1fr); }
+.sim-stage-split.with-manual { grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.85fr); }
+.sim-hud { max-width: calc(100% - 430px); }
+.sim-hud-tools { right: auto; bottom: auto; left: 12px; top: 50px; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; max-width: 62%; pointer-events: none; }
+.sim-hud-tools span { font-size: 11.5px; }
+.sim-hud-right { top: 10px; right: 12px; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.sim-hud-right button { min-height: 32px; padding: 0 9px; gap: 5px; font-size: 11px; }
+.sim-hud-right button.active { background: rgba(26, 36, 28, 0.92); }
+.sim-macro-pip { position: absolute; z-index: 3; right: 14px; bottom: 52px; width: 216px; height: 216px; border: 1.5px solid var(--acid); box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55); display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
+.sim-macro-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 7px; background: rgba(17, 22, 19, 0.88); border-bottom: 1px solid rgba(210, 253, 120, 0.35); font-family: var(--mono); font-size: 9.5px; font-weight: 700; color: var(--acid); letter-spacing: 0.05em; }
+.sim-macro-header span { display: inline-flex; align-items: center; gap: 4px; }
+.sim-macro-header code { color: var(--paper); font-weight: 600; }
+.sim-macro-reticle { position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; transform: translate(-50%, -50%); border: 1px dashed rgba(210, 253, 120, 0.55); border-radius: 50%; }
+.sim-macro-footer { display: flex; align-items: center; justify-content: space-between; padding: 3px 7px; background: rgba(17, 22, 19, 0.88); border-top: 1px solid rgba(249, 241, 228, 0.16); font-family: var(--mono); font-size: 9.5px; color: #d5ddd5; }
+.sim-macro-footer code { color: var(--acid); }
+.sim-manual-drawer { display: flex; flex-direction: column; height: min(64vh, 640px); min-height: 420px; border-left: 1px solid var(--line-dark); background: #141a16; }
+.sim-manual-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line-dark); background: #19211c; }
+.sim-manual-header strong { display: block; font-size: 12.5px; color: var(--paper); margin-top: 2px; }
+.sim-manual-iframe { flex: 1; width: 100%; border: 0; background: #fff; }
+.sim-bom tbody tr:hover { background: rgba(210, 253, 120, 0.07); }
