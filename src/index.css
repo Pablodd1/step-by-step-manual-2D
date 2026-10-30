@@ -4824,3 +4824,827 @@ a.\[a\&\]\:hover\:text-accent-foreground:hover {
 .sim-manual-header strong { display: block; font-size: 12.5px; color: var(--paper); margin-top: 2px; }
 .sim-manual-iframe { flex: 1; width: 100%; border: 0; background: #fff; }
 .sim-bom tbody tr:hover { background: rgba(210, 253, 120, 0.07); }
+
+
+/* === FULL BLUEPRINT & BOB-THE-BUILDER / FLAT-PACK 3D MANUAL SHEET === */
+.blueprint-hero-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding: 18px 22px;
+  border: 1px solid var(--line-dark);
+  background: linear-gradient(135deg, #17201a 0%, #111613 100%);
+}
+.blueprint-hero-banner h1 {
+  margin: 6px 0 6px;
+  font-size: clamp(22px, 2.4vw, 32px);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+.blueprint-output-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.bobby-manual-wrapper {
+  margin-bottom: 24px;
+}
+
+.bobby-page {
+  position: relative;
+  width: 100%;
+  background: #ffffff;
+  color: #141414;
+  border: 2.5px solid #141414;
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.38);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+.bobby-page::before {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border: 1.5px dashed rgba(20, 20, 20, 0.32);
+  border-radius: 16px;
+  pointer-events: none;
+  z-index: 8;
+}
+
+.bobby-topbar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 18px 24px 8px;
+  background: #ffffff;
+}
+.bobby-track-pills,
+.bobby-controls-right {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.bobby-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #141414;
+  background: #ffffff;
+  border: 2px solid #141414;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s;
+}
+.bobby-pill:hover {
+  background: #f0efe9;
+}
+.bobby-pill.active {
+  background: #141414;
+  color: #ffffff;
+}
+.bobby-tier-select {
+  padding: 5px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #141414;
+  background: #ffffff;
+  border: 2px solid #141414;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.bobby-jump-bar {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 24px 8px;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(20, 20, 20, 0.12);
+}
+.bobby-jump-label {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #6b6b6b;
+  margin-right: 4px;
+}
+.bobby-jump-chip {
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #141414;
+  background: #f7f6f3;
+  border: 1.5px solid rgba(20, 20, 20, 0.35);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.bobby-jump-chip:hover {
+  background: #ebe9e2;
+}
+.bobby-jump-chip.active {
+  background: #e6502e;
+  border-color: #141414;
+  color: #ffffff;
+}
+
+.bobby-stage-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.bobby-stage-split.with-manual {
+  grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.85fr);
+}
+
+.bobby-view {
+  position: relative;
+  height: clamp(390px, 56vh, 560px);
+  min-height: 390px;
+  overflow: hidden;
+  background: #ffffff;
+}
+.bobby-page.realistic-theme .bobby-view {
+  background: #161b18;
+}
+
+.bobby-stepno {
+  position: absolute;
+  top: 14px;
+  left: 26px;
+  z-index: 6;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: clamp(32px, 4.2vw, 48px);
+  font-weight: 800;
+  letter-spacing: -2px;
+  line-height: 1;
+  color: #141414;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 4px 10px;
+  border-radius: 10px;
+  pointer-events: none;
+}
+.bobby-stepno small {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: #6b6b6b;
+}
+
+/* Circular Magnifying Detail Loupe (#inset) & Dashed Leader Line (#leads) */
+.sim-leads-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 4;
+  pointer-events: none;
+  overflow: visible;
+}
+.sim-inset-dial {
+  position: absolute;
+  top: 14px;
+  right: 24px;
+  width: 196px;
+  height: 196px;
+  z-index: 5;
+  border-radius: 50%;
+  border: 3px solid #141414;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+.sim-detail-tag {
+  position: absolute;
+  top: 14px;
+  right: 24px;
+  width: 196px;
+  height: 196px;
+  z-index: 6;
+  pointer-events: none;
+}
+.sim-detail-tag b {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #141414;
+  background: #ffffff;
+  border: 1.5px solid #141414;
+  border-radius: 999px;
+  padding: 1px 9px;
+  white-space: nowrap;
+}
+.sim-detail-tag .cnt {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #141414;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1.5px solid #141414;
+  border-radius: 8px;
+  padding: 1px 8px;
+  white-space: nowrap;
+}
+
+/* Step 0 Parts Tray Floating 3D-Projected Chips */
+.sim-tray-chip {
+  position: absolute;
+  transform: translate(-50%, 0);
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px 2px 7px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #141414;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1.5px solid #141414;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
+  z-index: 5;
+}
+.sim-tray-chip .tdot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e6502e;
+  flex: 0 0 auto;
+}
+.sim-tray-chip code {
+  font-family: inherit;
+  color: #6b6b6b;
+  font-weight: 600;
+}
+
+/* Safety Gate Overlay inside 3D View */
+.bobby-safety-gate {
+  position: absolute;
+  left: 26px;
+  top: 74px;
+  z-index: 7;
+  max-width: 390px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 2px solid #e6502e;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.14);
+  color: #141414;
+  font-size: 12px;
+}
+.bobby-safety-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #e6502e;
+  margin-bottom: 4px;
+}
+.bobby-safety-badge {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #e6502e;
+  color: #ffffff;
+  font-size: 9.5px;
+  font-weight: 800;
+}
+.bobby-safety-gate p {
+  margin: 0 0 6px;
+  color: #3a3a3a;
+  line-height: 1.35;
+}
+.bobby-safety-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Encouraging Assembly Buddy (#buddy) */
+.bobby-buddy {
+  position: absolute;
+  left: 14px;
+  bottom: 28px;
+  z-index: 6;
+  width: 118px;
+  pointer-events: none;
+}
+.bobby-buddy-guy {
+  width: 82px;
+}
+.bobby-buddy-speech {
+  position: absolute;
+  left: 78px;
+  bottom: 48px;
+  width: 200px;
+  background: #ffffff;
+  border: 2px solid #141414;
+  border-radius: 12px;
+  padding: 6px 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: #141414;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.14);
+}
+
+.bobby-hint {
+  position: absolute;
+  right: 26px;
+  bottom: 8px;
+  z-index: 6;
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b6b6b;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 2px 8px;
+  border-radius: 6px;
+  pointer-events: none;
+}
+
+/* Legend Chips (#legend) */
+.bobby-legend {
+  position: relative;
+  z-index: 9;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 26px 0;
+  background: #ffffff;
+}
+.bobby-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #141414;
+  background: #ffffff;
+  border: 1.5px solid rgba(20, 20, 20, 0.55);
+  border-radius: 8px;
+}
+.bobby-chip .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e6502e;
+}
+.bobby-chip .q {
+  font-weight: 800;
+}
+.bobby-chip code {
+  font-family: inherit;
+  color: #6b6b6b;
+  font-weight: 600;
+}
+.bobby-chip.phase-pill {
+  margin-left: auto;
+  background: #f7f6f3;
+}
+
+/* Step Caption (.cap) */
+.bobby-cap {
+  position: relative;
+  z-index: 9;
+  padding: 10px 26px 4px;
+  background: #ffffff;
+}
+.bobby-cap-name {
+  font-size: 17px;
+  font-weight: 800;
+  color: #141414;
+}
+.bobby-cap-txt {
+  margin-top: 3px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #4a4a4a;
+}
+
+/* Step Ruler Bar (.bar) */
+.bobby-bar {
+  position: relative;
+  z-index: 9;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 26px 20px;
+  background: #ffffff;
+}
+.bobby-bar-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bobby-nav-btn {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border: 2px solid #141414;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #141414;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.14s, transform 0.1s;
+}
+.bobby-nav-btn:hover:not(:disabled) {
+  background: #f0efe9;
+}
+.bobby-nav-btn.active {
+  background: #141414;
+  color: #ffffff;
+}
+.bobby-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.bobby-track {
+  position: relative;
+  flex: 1 1 240px;
+  height: 42px;
+  border: 2px solid #141414;
+  border-radius: 13px;
+  background: #ffffff;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 14px;
+}
+.bobby-track-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: #f0efe9;
+  pointer-events: none;
+}
+.bobby-track-lbl,
+.bobby-track-val {
+  position: relative;
+  z-index: 2;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #141414;
+  pointer-events: none;
+}
+.bobby-track input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 3;
+}
+
+.bobby-subscrub {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  height: 42px;
+  border: 2px solid #141414;
+  border-radius: 13px;
+  background: #f7f6f3;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.bobby-subscrub input[type="range"] {
+  width: 84px;
+  accent-color: #e6502e;
+}
+
+/* Blueprint Sections Tabs Below Player */
+.blueprint-tab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.blueprint-tab-bar button {
+  min-height: 40px;
+  padding: 0 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line-dark);
+  background: #171f1a;
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.blueprint-tab-bar button.active {
+  border-color: var(--acid);
+  background: rgba(210, 253, 120, 0.12);
+  color: var(--acid);
+}
+
+.blueprint-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.blueprint-three-col {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+.blueprint-card {
+  padding: 20px;
+  border: 1px solid var(--line-dark);
+  background: #171f1a;
+}
+.blueprint-card h2 {
+  margin: 6px 0 10px;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.calc-grid-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.calc-grid-inputs label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #aeb8af;
+}
+.calc-grid-inputs input,
+.calc-grid-inputs select {
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--line-dark);
+  background: #101612;
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.calc-side-by-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.calc-result-box {
+  padding: 14px;
+  border: 1px solid var(--line-dark);
+  background: #111713;
+}
+.calc-result-box.pro {
+  border-color: var(--acid);
+}
+.calc-big-num {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--paper);
+  margin: 6px 0;
+}
+.calc-result-box ul {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #c9d2ca;
+}
+
+.conflict-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.conflict-item {
+  padding: 12px;
+  border: 1px solid var(--line-dark);
+  background: #111713;
+}
+.conflict-item h3 {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  color: var(--acid);
+}
+.conflict-cols {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.conflict-cols > div {
+  padding: 8px;
+  border: 1px solid rgba(249, 241, 228, 0.12);
+  background: #161d18;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.conflict-cols > div.unitec-col {
+  border-color: rgba(210, 253, 120, 0.4);
+}
+.conflict-cols small {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #8e9a90;
+}
+.conflict-cols strong {
+  font-size: 12px;
+  color: var(--paper);
+}
+.conflict-cols span {
+  font-size: 11px;
+  color: #9aa69c;
+}
+.conflict-rule {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #d5ddd5;
+}
+
+/* Printable Step Sheets Grid */
+.empty-sheets-cta {
+  padding: 28px;
+  text-align: center;
+  border: 1px dashed var(--line-dark);
+  margin-top: 14px;
+}
+.printed-sheets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.printed-step-card {
+  background: #ffffff;
+  color: #141414;
+  border: 2px solid #141414;
+  border-radius: 16px;
+  overflow: hidden;
+}
+.printed-step-card img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-bottom: 1.5px solid #141414;
+}
+.printed-step-body {
+  padding: 12px 14px;
+}
+.printed-step-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.printed-step-body h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+.printed-step-body p {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #3a3a3a;
+}
+.printed-step-body small {
+  display: block;
+  font-size: 11px;
+  color: #6b6b6b;
+}
+
+.pipeline-list,
+.phase-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pipeline-item,
+.phase-plan-item {
+  padding: 12px;
+  border: 1px solid var(--line-dark);
+  background: #111713;
+}
+.pipeline-item pre,
+.blueprint-code-block {
+  margin: 6px 0 0;
+  padding: 10px;
+  background: #0c100d;
+  border: 1px solid rgba(210, 253, 120, 0.22);
+  color: var(--acid);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+.blueprint-spec-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #d5ddd5;
+}
+.voiceover-table-wrap {
+  max-height: 230px;
+  overflow-y: auto;
+  border: 1px solid var(--line-dark);
+  margin-top: 8px;
+}
+.voiceover-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.voiceover-table-wrap th,
+.voiceover-table-wrap td {
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(249, 241, 228, 0.08);
+  text-align: left;
+}
+.moderation-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-dark);
+  background: #111713;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+}
+.ref-link-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ref-link-list li {
+  padding: 10px;
+  border: 1px solid var(--line-dark);
+  background: #111713;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ref-link-list a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--acid);
+  font-size: 13px;
+  text-decoration: underline;
+}
+.ref-link-list span {
+  font-size: 11.5px;
+  color: #9aa69c;
+}
+
+@media (max-width: 1100px) {
+  .blueprint-two-col,
+  .blueprint-three-col,
+  .calc-side-by-side,
+  .conflict-cols {
+    grid-template-columns: 1fr;
+  }
+}

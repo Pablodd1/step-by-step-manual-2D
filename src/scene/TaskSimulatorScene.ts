@@ -529,10 +529,23 @@ export class TaskSimulatorScene {
   private showMacro = true;
   private exploded = false;
   private explodeCurrent = 0;
-  private viewMode: SimulatorViewMode = "room";
+  private partsTrayMode = false;
+  private viewMode: SimulatorViewMode = "drawing";
   private snapNext = true;
   private lastStepIdx: number | null = null;
   private surfaceMode: SimulatorSurfaceMode = "botanical";
+  private customDetailLabel = "";
+
+  private insetCanvas!: HTMLCanvasElement;
+  private insetCtx: CanvasRenderingContext2D | null = null;
+  private leadsSvg!: SVGSVGElement;
+  private leadLine!: SVGLineElement;
+  private targetCircle!: SVGCircleElement;
+  private detailTagEl!: HTMLDivElement;
+  private detailBadgeEl!: HTMLElement;
+  private detailCntEl!: HTMLSpanElement;
+  private trayGroup!: THREE.Group;
+  private trayAnchors: Array<{ anchor: THREE.Vector3; html: string; el: HTMLDivElement }> = [];
 
   private toolCache = new Map<ToolId, THREE.Group>();
   private activeTool: THREE.Group | null = null;
@@ -570,6 +583,7 @@ export class TaskSimulatorScene {
   private axes: THREE.AxesHelper;
   private marker: THREE.Mesh;
   private focusRing: THREE.Mesh;
+  private arrowCone: THREE.Mesh;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -869,20 +883,33 @@ export class TaskSimulatorScene {
     this.mist.frustumCulled = false;
     this.scene.add(this.mist);
 
-    // Robot toolpath overlay + Active Callout Target Ring
+    // Robot toolpath overlay + Active Callout Target Ring + 3D Bobbing Directional Arrow
     this.pathLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.95, depthTest: false }));
     this.pathLines.renderOrder = 10;
     this.pathLines.frustumCulled = false;
-    this.marker = new THREE.Mesh(new THREE.SphereGeometry(0.009, 14, 10), new THREE.MeshBasicMaterial({ color: ACID, depthTest: false }));
+    this.marker = new THREE.Mesh(new THREE.SphereGeometry(0.011, 14, 10), new THREE.MeshBasicMaterial({ color: 0xe6502e, depthTest: false }));
     this.marker.renderOrder = 11;
     this.focusRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.024, 0.03, 28),
-      new THREE.MeshBasicMaterial({ color: ACID, side: THREE.DoubleSide, transparent: true, opacity: 0.85, depthTest: false }),
+      new THREE.RingGeometry(0.028, 0.042, 32),
+      new THREE.MeshBasicMaterial({ color: 0xe6502e, side: THREE.DoubleSide, transparent: true, opacity: 0.95, depthTest: false }),
     );
     this.focusRing.renderOrder = 11;
+    this.arrowCone = new THREE.Mesh(
+      new THREE.ConeGeometry(0.022, 0.068, 18),
+      new THREE.MeshBasicMaterial({ color: 0xe6502e, depthTest: false }),
+    );
+    this.arrowCone.renderOrder = 12;
     this.axes = new THREE.AxesHelper(0.35);
     this.axes.position.set(0, 0.005, 0.005);
-    this.scene.add(this.pathLines, this.marker, this.focusRing, this.axes);
+    this.scene.add(this.pathLines, this.marker, this.focusRing, this.arrowCone, this.axes);
+
+    this.addHierarchyOutlines(this.straightedge);
+    this.addHierarchyOutlines(this.plate);
+    this.addHierarchyOutlines(this.laserDevice);
+
+    this.buildOverlayDom(container);
+    this.buildPartsTray(container);
+    this.setViewMode("drawing");
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(container);
@@ -891,14 +918,116 @@ export class TaskSimulatorScene {
   }
 
   private addOutline(mesh: THREE.Mesh) {
-    const edges = new THREE.EdgesGeometry(mesh.geometry, 25);
+    const edges = new THREE.EdgesGeometry(mesh.geometry, 24);
     const line = new THREE.LineSegments(
       edges,
-      new THREE.LineBasicMaterial({ color: INK, transparent: true, opacity: 0.65 }),
+      new THREE.LineBasicMaterial({ color: 0x141414, transparent: true, opacity: 0.85 }),
     );
-    line.visible = false;
+    line.visible = this.viewMode === "drawing";
     mesh.add(line);
     this.drawingOutlines.push(line);
+  }
+
+  private addHierarchyOutlines(root: THREE.Object3D) {
+    root.traverse((obj) => {
+      if ((obj as THREE.Mesh).isMesh) {
+        const m = obj as THREE.Mesh;
+        if (!m.userData.hasOutline) {
+          m.userData.hasOutline = true;
+          this.addOutline(m);
+        }
+      }
+    });
+  }
+
+  private buildOverlayDom(container: HTMLElement) {
+    // SVG Leader Line & Target Ring (#leads, #lead, #target — inspired by bob-the-builder)
+    const svgNS = "http://www.w3.org/2000/svg";
+    this.leadsSvg = document.createElementNS(svgNS, "svg");
+    this.leadsSvg.setAttribute("class", "sim-leads-svg");
+    this.leadLine = document.createElementNS(svgNS, "line");
+    this.leadLine.setAttribute("stroke", "#141414");
+    this.leadLine.setAttribute("stroke-width", "1.8");
+    this.leadLine.setAttribute("stroke-dasharray", "5 4");
+    this.targetCircle = document.createElementNS(svgNS, "circle");
+    this.targetCircle.setAttribute("r", "10");
+    this.targetCircle.setAttribute("fill", "rgba(230, 80, 46, 0.14)");
+    this.targetCircle.setAttribute("stroke", "#e6502e");
+    this.targetCircle.setAttribute("stroke-width", "2.5");
+    this.leadsSvg.appendChild(this.leadLine);
+    this.leadsSvg.appendChild(this.targetCircle);
+    container.appendChild(this.leadsSvg);
+
+    // Circular Magnifying Detail Loupe (#inset) in top-right corner
+    this.insetCanvas = document.createElement("canvas");
+    this.insetCanvas.className = "sim-inset-dial";
+    this.insetCanvas.width = 360;
+    this.insetCanvas.height = 360;
+    this.insetCtx = this.insetCanvas.getContext("2d");
+    container.appendChild(this.insetCanvas);
+
+    this.detailTagEl = document.createElement("div");
+    this.detailTagEl.className = "sim-detail-tag";
+    this.detailBadgeEl = document.createElement("b");
+    this.detailBadgeEl.textContent = "DETAIL · 3.5×";
+    this.detailCntEl = document.createElement("span");
+    this.detailCntEl.className = "cnt";
+    this.detailTagEl.appendChild(this.detailBadgeEl);
+    this.detailTagEl.appendChild(this.detailCntEl);
+    container.appendChild(this.detailTagEl);
+  }
+
+  private buildPartsTray(container: HTMLElement) {
+    this.trayGroup = new THREE.Group();
+    this.trayGroup.visible = false;
+
+    const board = box(3.6, 0.03, 2.2, std(0xfaf8f2, { roughness: 0.9 }));
+    board.position.set(0, 0.72, 1.4);
+    this.addOutline(board);
+    this.trayGroup.add(board);
+
+    const items: Array<{ name: string; code: string; qty: number; tool: ToolId | "straightedge" }> = [
+      { name: "30° Snap-Off Knife", code: "9mm-30°", qty: 1, tool: "utilityKnife" },
+      { name: "Steel Straightedge", code: "600mm", qty: 1, tool: "straightedge" },
+      { name: "Felt Smoother", code: "280mm", qty: 1, tool: "smoother" },
+      { name: "Paste Roller", code: "230mm", qty: 1, tool: "pasteRoller" },
+      { name: "POM Seam Roller", code: "40mm", qty: 1, tool: "seamRoller" },
+      { name: "Voltage Detector", code: "CAT-III", qty: 1, tool: "voltageTester" },
+      { name: "Insulated Driver", code: "VDE-4mm", qty: 1, tool: "screwdriver" },
+      { name: "Flex Putty Knife", code: "100mm", qty: 1, tool: "fillerKnife" },
+      { name: "220-Grit Sander", code: "P220", qty: 1, tool: "sandingBlock" },
+      { name: "Degreaser Spray", code: "750ml", qty: 1, tool: "sprayBottle" },
+      { name: "Cellulose Sponge", code: "Rinse", qty: 2, tool: "sponge" },
+      { name: "Moisture Meter", code: "<12%WME", qty: 1, tool: "moistureMeter" },
+    ];
+
+    const cols = 4;
+    items.forEach((it, idx) => {
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      const x = (col - (cols - 1) / 2) * 0.78;
+      const z = 1.4 + (row - 1) * 0.58;
+      const prop = it.tool === "straightedge" ? this.straightedge.clone() : makeTool(it.tool);
+      prop.visible = true;
+      prop.scale.setScalar(1.35);
+      prop.position.set(x, 0.82, z);
+      prop.rotation.set(-0.35, 0.45, 0);
+      this.addHierarchyOutlines(prop);
+      this.trayGroup.add(prop);
+
+      const chip = document.createElement("div");
+      chip.className = "sim-tray-chip";
+      chip.innerHTML = `<span class="tdot"></span>${it.name} <code>${it.code} ×${it.qty}</code>`;
+      chip.style.display = "none";
+      container.appendChild(chip);
+      this.trayAnchors.push({
+        anchor: new THREE.Vector3(x, 0.94, z),
+        html: chip.innerHTML,
+        el: chip,
+      });
+    });
+
+    this.scene.add(this.trayGroup);
   }
 
   // -------------------------------------------------------------------------
@@ -1038,24 +1167,97 @@ export class TaskSimulatorScene {
   private renderScene() {
     const w = this.container.clientWidth || 800;
     const h = this.container.clientHeight || 500;
+
+    // 1. Render the Circular 3.5x Detail Loupe into this.insetCanvas first (single WebGL context!)
+    const showLoupe = this.showMacro && w > 480 && h > 320;
+    if (this.insetCanvas && this.detailTagEl && this.leadsSvg) {
+      this.insetCanvas.style.display = showLoupe ? "block" : "none";
+      this.detailTagEl.style.display = showLoupe ? "block" : "none";
+      this.leadsSvg.style.display = showLoupe && !this.partsTrayMode ? "block" : "none";
+    }
+    if (showLoupe && this.insetCtx) {
+      const size = Math.min(204, Math.floor(Math.min(w, h) * 0.42));
+      const dpr = this.renderer.getPixelRatio();
+      this.macroCamera.aspect = 1;
+      this.macroCamera.updateProjectionMatrix();
+      this.renderer.setScissorTest(true);
+      this.renderer.setScissor(0, 0, size, size);
+      this.renderer.setViewport(0, 0, size, size);
+      this.renderer.render(this.scene, this.macroCamera);
+      this.insetCtx.clearRect(0, 0, this.insetCanvas.width, this.insetCanvas.height);
+      this.insetCtx.drawImage(
+        this.renderer.domElement,
+        0,
+        this.renderer.domElement.height - size * dpr,
+        size * dpr,
+        size * dpr,
+        0,
+        0,
+        this.insetCanvas.width,
+        this.insetCanvas.height,
+      );
+      this.renderer.setScissorTest(false);
+    }
+
+    // 2. Render the Main 3D Stage across 100% of the canvas
     this.renderer.setViewport(0, 0, w, h);
     this.renderer.setScissorTest(false);
     this.renderer.render(this.scene, this.camera);
 
-    // Render the 3.5x Step Detail Macro Zoom inset in the bottom-right corner
-    if (this.showMacro && w > 520 && h > 360) {
-      const size = 216;
-      const padX = 14;
-      const padY = 52;
-      this.macroCamera.aspect = 1;
-      this.macroCamera.updateProjectionMatrix();
-      this.renderer.setScissorTest(true);
-      this.renderer.setScissor(w - size - padX, padY, size, size);
-      this.renderer.setViewport(w - size - padX, padY, size, size);
-      this.renderer.render(this.scene, this.macroCamera);
-      this.renderer.setScissorTest(false);
-      this.renderer.setViewport(0, 0, w, h);
+    // 3. Project the 3D Target Ring & Dashed SVG Leader Line (#leads)
+    if (showLoupe && !this.partsTrayMode && this.leadLine && this.targetCircle) {
+      const v = this.macroTarget.clone().project(this.camera);
+      const tx = (v.x * 0.5 + 0.5) * w;
+      const ty = (-v.y * 0.5 + 0.5) * h;
+      const dialSize = this.insetCanvas.clientWidth || 196;
+      const padRight = 24;
+      const padTop = 54;
+      const cx = w - padRight - dialSize / 2;
+      const cy = padTop + dialSize / 2;
+      this.targetCircle.setAttribute("cx", tx.toFixed(1));
+      this.targetCircle.setAttribute("cy", ty.toFixed(1));
+      this.leadLine.setAttribute("x1", cx.toFixed(1));
+      this.leadLine.setAttribute("y1", (cy + dialSize / 2 - 4).toFixed(1));
+      this.leadLine.setAttribute("x2", tx.toFixed(1));
+      this.leadLine.setAttribute("y2", ty.toFixed(1));
     }
+
+    // 4. Project Step 0 Parts Tray floating labels with collision avoidance
+    this.updateTrayLabels(w, h);
+  }
+
+  private updateTrayLabels(w: number, h: number) {
+    if (!this.partsTrayMode) {
+      this.trayAnchors.forEach((a) => {
+        a.el.style.display = "none";
+      });
+      return;
+    }
+    const placed: Array<{ x0: number; x1: number; y0: number; y1: number }> = [];
+    this.trayAnchors.forEach((a) => {
+      const v = a.anchor.clone().project(this.camera);
+      if (v.z > 1) {
+        a.el.style.display = "none";
+        return;
+      }
+      const x = (v.x * 0.5 + 0.5) * w;
+      const y = (-v.y * 0.5 + 0.5) * h;
+      const cw = 155;
+      const ch = 24;
+      const r = { x0: x - cw / 2, x1: x + cw / 2, y0: y - ch, y1: y };
+      if (r.x0 < 8 || r.x1 > w - 8 || r.y0 < 48 || r.y1 > h - 12) {
+        a.el.style.display = "none";
+        return;
+      }
+      if (placed.some((p) => p.x0 < r.x1 + 4 && r.x0 < p.x1 + 4 && p.y0 < r.y1 + 3 && r.y0 < p.y1 + 3)) {
+        a.el.style.display = "none";
+        return;
+      }
+      placed.push(r);
+      a.el.style.display = "inline-flex";
+      a.el.style.left = `${x.toFixed(1)}px`;
+      a.el.style.top = `${(y - 14).toFixed(1)}px`;
+    });
   }
 
   private loop = () => {
@@ -1119,14 +1321,141 @@ export class TaskSimulatorScene {
   setViewMode(mode: SimulatorViewMode) {
     this.viewMode = mode;
     const isDrawing = mode === "drawing";
-    this.scene.background = new THREE.Color(isDrawing ? 0xf2eee3 : 0x161b18);
-    (this.wallMesh.material as THREE.MeshStandardMaterial).color.setHex(isDrawing ? 0xfaf7f0 : 0xb6a892);
-    (this.floorMesh.material as THREE.MeshStandardMaterial).opacity = isDrawing ? 0.35 : 1;
+    this.scene.background = new THREE.Color(isDrawing ? 0xffffff : 0x161b18);
+    (this.wallMesh.material as THREE.MeshStandardMaterial).color.setHex(isDrawing ? 0xfbfaf6 : 0xb6a892);
+    (this.floorMesh.material as THREE.MeshStandardMaterial).opacity = isDrawing ? 0.22 : 1;
     (this.floorMesh.material as THREE.MeshStandardMaterial).transparent = isDrawing;
     this.drawingOutlines.forEach((l) => {
       l.visible = isDrawing;
     });
     this.renderScene();
+  }
+
+  setPartsTrayMode(on: boolean) {
+    this.partsTrayMode = on;
+    this.trayGroup.visible = on;
+    this.wallMesh.visible = !on;
+    this.pathLines.visible = !on && this.showPath;
+    this.focusRing.visible = !on;
+    this.arrowCone.visible = !on;
+    this.marker.visible = !on && this.showPath;
+    if (this.activeTool) this.activeTool.visible = !on;
+    if (on) {
+      this.camGoalPos.set(0, 2.55, 3.35);
+      this.camGoalTarget.set(0, 0.78, 1.4);
+      this.camera.position.copy(this.camGoalPos);
+      this.controls.target.copy(this.camGoalTarget);
+      this.controls.update();
+      this.macroPos.set(-1.05, 1.05, 1.08);
+      this.macroTarget.set(-1.17, 0.82, 0.82);
+      this.macroCamera.position.copy(this.macroPos);
+      this.macroCamera.lookAt(this.macroTarget);
+      if (this.detailBadgeEl) this.detailBadgeEl.textContent = "ACTUAL SIZE";
+      if (this.detailCntEl) this.detailCntEl.textContent = "1× 30° Snap-Off Knife";
+    } else if (this.stepIdx >= 0) {
+      if (this.detailBadgeEl) this.detailBadgeEl.textContent = "DETAIL · 3.5×";
+      this.placeActors(WALLPAPER_TASK[this.stepIdx], this.progress);
+      if (this.autoCam) {
+        this.camera.position.copy(this.camGoalPos);
+        this.controls.target.copy(this.camGoalTarget);
+        this.controls.update();
+      }
+    }
+    this.renderScene();
+  }
+
+  setDetailLabel(label: string) {
+    this.customDetailLabel = label;
+    if (!this.partsTrayMode && this.detailCntEl) {
+      this.detailCntEl.textContent = label;
+    }
+  }
+
+  setQualityTier(tier: "low" | "medium" | "hd") {
+    const dpr = tier === "hd" ? 2.0 : tier === "medium" ? 1.5 : 1.0;
+    this.renderer.setPixelRatio(Math.min(dpr, 2));
+    this.renderer.shadowMap.enabled = tier !== "low";
+    this.resize();
+  }
+
+  /**
+   * Renders a composite PNG card combining the main 3D view, circular Detail Loupe, and dashed leader line
+   * so one step-data file generates the Printable Step Sheets directly from the 3D scene!
+   */
+  captureStepComposite(stepBadge: string, title: string, detailLabel: string): string {
+    const prevParts = this.partsTrayMode;
+    if (prevParts) this.setPartsTrayMode(false);
+    this.renderScene();
+    const out = document.createElement("canvas");
+    out.width = 960;
+    out.height = 600;
+    const ctx = out.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.drawImage(this.renderer.domElement, 0, 0, out.width, out.height);
+
+    // Draw circular detail loupe in top-right of printed card
+    const dialR = 88;
+    const dialCx = out.width - dialR - 24;
+    const dialCy = dialR + 24;
+
+    // Leader line to projected target
+    const v = this.macroTarget.clone().project(this.camera);
+    const tx = (v.x * 0.5 + 0.5) * out.width;
+    const ty = (-v.y * 0.5 + 0.5) * out.height;
+    ctx.save();
+    ctx.strokeStyle = "#141414";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    ctx.beginPath();
+    ctx.moveTo(dialCx, dialCy + dialR);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "#e6502e";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // Circular clipped inset
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(dialCx, dialCy, dialR, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.fillStyle = "#ffffff";
+    ctx.fill();
+    ctx.clip();
+    ctx.drawImage(this.insetCanvas, dialCx - dialR, dialCy - dialR, dialR * 2, dialR * 2);
+    ctx.restore();
+
+    ctx.strokeStyle = "#141414";
+    ctx.lineWidth = 3.5;
+    ctx.beginPath();
+    ctx.arc(dialCx, dialCy, dialR, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Step number & detail caption
+    ctx.fillStyle = "#141414";
+    ctx.font = "800 34px 'Helvetica Neue', Arial, sans-serif";
+    ctx.fillText(stepBadge, 24, 46);
+    ctx.font = "700 15px 'Helvetica Neue', Arial, sans-serif";
+    ctx.fillText(title, 24, 70);
+
+    ctx.fillStyle = "rgba(255,255,255,0.94)";
+    ctx.fillRect(dialCx - 68, dialCy + dialR - 24, 136, 20);
+    ctx.fillStyle = "#141414";
+    ctx.font = "800 11px 'Helvetica Neue', Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(detailLabel, dialCx, dialCy + dialR - 10);
+
+    if (prevParts) this.setPartsTrayMode(true);
+    return out.toDataURL("image/png");
+  }
+
+  getCanvas(): HTMLCanvasElement {
+    return this.renderer.domElement;
   }
 
   setSurfaceMode(mode: SimulatorSurfaceMode) {
@@ -1456,10 +1785,14 @@ export class TaskSimulatorScene {
       if (!tool) {
         tool = makeTool(step.tool);
         tool.userData.id = step.tool;
+        this.addHierarchyOutlines(tool);
         this.toolCache.set(step.tool, tool);
       }
       this.activeTool = tool;
       this.scene.add(tool);
+    }
+    if (this.activeTool) {
+      this.activeTool.visible = !this.partsTrayMode;
     }
 
     const q = new THREE.Quaternion();
@@ -1539,15 +1872,30 @@ export class TaskSimulatorScene {
     }
 
     // Choreographed Step Zoom Camera + Live 3.5x Macro Camera tracking the exact working tip
-    if (this.autoCam && !this.exploded) {
+    if (this.autoCam && !this.exploded && !this.partsTrayMode) {
       this.computeStepZoomCamera(step, tip, t);
     }
-    this.computeMacroCamera(step, tip);
+    if (!this.partsTrayMode) {
+      this.computeMacroCamera(step, tip);
+      if (this.detailCntEl) {
+        this.detailCntEl.textContent = this.customDetailLabel || step.title.slice(0, 24);
+      }
+    }
 
     this.marker.position.copy(tip);
-    (this.marker.material as THREE.MeshBasicMaterial).color.setHex(s.primary.contact ? ACID : 0x8e9a92);
-    this.focusRing.position.set(tip.x, tip.y, Math.max(0.009, tip.z + 0.002));
+    (this.marker.material as THREE.MeshBasicMaterial).color.setHex(s.primary.contact ? 0xe6502e : 0x8e9a92);
+    this.focusRing.position.set(tip.x, tip.y, Math.max(0.011, tip.z + 0.003));
     this.focusRing.rotation.set(step.primitive === "cutOnTable" || step.primitive === "lay" ? -Math.PI / 2 : 0, 0, t * Math.PI * 2);
+
+    // Bobbing 3D International-Orange Directional Cone Arrow (bob-the-builder style)
+    const bob = Math.sin(t * Math.PI * 6) * 0.018;
+    if (step.primitive === "cutOnTable") {
+      this.arrowCone.position.set(tip.x, tip.y + 0.11 + bob, tip.z);
+      this.arrowCone.rotation.set(Math.PI, 0, 0);
+    } else {
+      this.arrowCone.position.set(tip.x, tip.y + 0.09 + bob, Math.max(0.04, tip.z + 0.04));
+      this.arrowCone.rotation.set(Math.PI, 0, 0);
+    }
   }
 
   /**
