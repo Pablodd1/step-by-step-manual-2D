@@ -31,6 +31,7 @@ import {
   ZoomIn,
 } from "lucide-react";
 import { SiteHeader } from "@/components/SiteHeader";
+import { BuilderFigure, ManualToolArt, resolveManualToolKind } from "@/components/ManualLineArt";
 import { TaskSimulatorScene, type SimulatorViewMode } from "@/scene/TaskSimulatorScene";
 import {
   BLUEPRINT_TRACKS,
@@ -603,10 +604,26 @@ export default function TaskSimulatorPage() {
                   </div>
                 )}
 
-                {/* Big IKEA / Bob-the-Builder Step Number in Top-Left */}
-                <div className="bobby-stepno">
-                  {currentStepDisplay}
-                  {!isPartsTray && <small>/ {totalSteps}</small>}
+                {/* Big IKEA / Bygga Step Number + Corner Vector Tool/Hardware Box in Top-Left */}
+                <div className="bobby-corner-stack">
+                  <div className="bobby-stepno">
+                    {currentStepDisplay}
+                    {!isPartsTray && <small>/ {totalSteps}</small>}
+                  </div>
+                  {!isPartsTray && (
+                    <div className="bobby-hw-box" aria-label="Step tools and parts">
+                      {activeBlueprintStep.items.slice(0, 3).map((it, idx) => (
+                        <div key={`${it.code}-${idx}`} className="bobby-hw-row">
+                          <span className="bobby-hw-qty">{it.qty}×</span>
+                          <ManualToolArt kind={resolveManualToolKind(`${it.name} ${it.code}`)} size={48} />
+                          <div className="bobby-hw-meta">
+                            <strong>{it.name}</strong>
+                            <code>{it.code}</code>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Safety Gate Overlay Banner on Electrical Steps */}
@@ -641,7 +658,16 @@ export default function TaskSimulatorPage() {
                   <div className="bobby-buddy show">
                     <div className="bobby-buddy-speech">{activeBlueprintStep.buddyCheer.speech}</div>
                     <div className="bobby-buddy-guy">
-                      <BuddySvg pose={activeBlueprintStep.buddyCheer.pose} />
+                      <BuilderFigure
+                        pose={
+                          activeBlueprintStep.buddyCheer.pose === "thumbsUp"
+                            ? "cheer"
+                            : activeBlueprintStep.buddyCheer.pose === "wave"
+                              ? "wave"
+                              : "point"
+                        }
+                        size={86}
+                      />
                     </div>
                   </div>
                 )}

@@ -1,6 +1,18 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
+import {
+  applyGroupViewMode,
+  arcArrow,
+  arrowPath,
+  createFatLineMaterial,
+  dimensionLineSvg,
+  setLineArtResolution,
+  upgradeGroupToLineArt,
+} from "./lineArtMaterials";
 import {
   DROP_COUNT,
   DROP_WIDTH,
@@ -44,13 +56,18 @@ function rng(seed: number) {
 }
 
 function box(w: number, h: number, d: number, mat: THREE.Material) {
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  const minDim = Math.min(w, h, d);
+  const geo =
+    minDim >= 0.014
+      ? new RoundedBoxGeometry(w, h, d, 2, Math.min(0.004, minDim * 0.14))
+      : new THREE.BoxGeometry(w, h, d);
+  const m = new THREE.Mesh(geo, mat);
   m.castShadow = true;
   m.receiveShadow = true;
   return m;
 }
 
-function cyl(rTop: number, rBot: number, h: number, mat: THREE.Material, seg = 20) {
+function cyl(rTop: number, rBot: number, h: number, mat: THREE.Material, seg = 28) {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBot, h, seg), mat);
   m.castShadow = true;
   return m;
@@ -539,6 +556,8 @@ export class TaskSimulatorScene {
   private insetCanvas!: HTMLCanvasElement;
   private insetCtx: CanvasRenderingContext2D | null = null;
   private leadsSvg!: SVGSVGElement;
+  private dimsGroup!: SVGGElement;
+  private motionArrowEl!: SVGPathElement;
   private leadLine!: SVGLineElement;
   private targetCircle!: SVGCircleElement;
   private detailTagEl!: HTMLDivElement;
@@ -556,7 +575,8 @@ export class TaskSimulatorScene {
 
   private floorMesh!: THREE.Mesh;
   private wallMesh!: THREE.Mesh;
-  private drawingOutlines: THREE.LineSegments[] = [];
+  private drawingOutlines: LineSegments2[] = [];
+  private cadTrackedGroups: Array<{ root: THREE.Object3D; emphasis: "active" | "context" | "accent" }> = [];
 
   private dirt: THREE.Mesh[] = [];
   private holes: THREE.Mesh[] = [];
@@ -890,12 +910,12 @@ export class TaskSimulatorScene {
     this.marker = new THREE.Mesh(new THREE.SphereGeometry(0.011, 14, 10), new THREE.MeshBasicMaterial({ color: 0xe6502e, depthTest: false }));
     this.marker.renderOrder = 11;
     this.focusRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.028, 0.042, 32),
-      new THREE.MeshBasicMaterial({ color: 0xe6502e, side: THREE.DoubleSide, transparent: true, opacity: 0.95, depthTest: false }),
+      new THREE.RingGeometry(0.015, 0.022, 32),
+      new THREE.MeshBasicMaterial({ color: 0xe6502e, side: THREE.DoubleSide, transparent: true, opacity: 0.88, depthTest: false }),
     );
     this.focusRing.renderOrder = 11;
     this.arrowCone = new THREE.Mesh(
-      new THREE.ConeGeometry(0.022, 0.068, 18),
+      new THREE.ConeGeometry(0.012, 0.036, 18),
       new THREE.MeshBasicMaterial({ color: 0xe6502e, depthTest: false }),
     );
     this.arrowCone.renderOrder = 12;
@@ -903,12 +923,13 @@ export class TaskSimulatorScene {
     this.axes.position.set(0, 0.005, 0.005);
     this.scene.add(this.pathLines, this.marker, this.focusRing, this.arrowCone, this.axes);
 
+    this.buildOverlayDom(container);
+    this.buildPartsTray(container);
+
     this.addHierarchyOutlines(this.straightedge);
     this.addHierarchyOutlines(this.plate);
     this.addHierarchyOutlines(this.laserDevice);
 
-    this.buildOverlayDom(container);
-    this.buildPartsTray(container);
     this.setViewMode("drawing");
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -919,43 +940,63 @@ export class TaskSimulatorScene {
 
   private addOutline(mesh: THREE.Mesh) {
     const edges = new THREE.EdgesGeometry(mesh.geometry, 24);
-    const line = new THREE.LineSegments(
-      edges,
-      new THREE.LineBasicMaterial({ color: 0x141414, transparent: true, opacity: 0.85 }),
-    );
-    line.visible = this.viewMode === "drawing";
-    mesh.add(line);
-    this.drawingOutlines.push(line);
+    const posAttr = edges.getAttribute("position");
+    if (posAttr && posAttr.count >= 2) {
+      const lsGeo = new LineSegmentsGeometry();
+      lsGeo.setPositions(posAttr.array as Float32Array);
+      const lineMat = createFatLineMaterial(1.95, 0x141414, 0.92);
+      const line = new LineSegments2(lsGeo, lineMat);
+      line.userData.__isCadAuxiliary = true;
+      line.renderOrder = 2;
+      line.visible = true;
+      mesh.add(line);
+      this.drawingOutlines.push(line);
+    }
+    edges.dispose();
   }
 
-  private addHierarchyOutlines(root: THREE.Object3D) {
-    root.traverse((obj) => {
-      if ((obj as THREE.Mesh).isMesh) {
-        const m = obj as THREE.Mesh;
-        if (!m.userData.hasOutline) {
-          m.userData.hasOutline = true;
-          this.addOutline(m);
-        }
-      }
+  private addHierarchyOutlines(root: THREE.Object3D, emphasis: "active" | "context" | "accent" = "active") {
+    upgradeGroupToLineArt(root, {
+      includeHull: true,
+      drawingLineWidth: emphasis === "active" ? 2.15 : 1.45,
+      tintAmt: emphasis === "active" ? 0.28 : emphasis === "accent" ? 0.42 : 0.0,
     });
+    applyGroupViewMode(root, { viewMode: this.viewMode, emphasis });
+    if (!this.cadTrackedGroups.some((item) => item.root === root)) {
+      this.cadTrackedGroups.push({ root, emphasis });
+    }
   }
 
   private buildOverlayDom(container: HTMLElement) {
-    // SVG Leader Line & Target Ring (#leads, #lead, #target — inspired by bob-the-builder)
+    // Screen-Space CAD Vector SVG Overlay (#leads: Dimensions + Motion Arrow + Tangent Callout Leader)
     const svgNS = "http://www.w3.org/2000/svg";
     this.leadsSvg = document.createElementNS(svgNS, "svg");
     this.leadsSvg.setAttribute("class", "sim-leads-svg");
+
+    this.dimsGroup = document.createElementNS(svgNS, "g");
+    this.dimsGroup.setAttribute("class", "sim-svg-dims");
+    this.leadsSvg.appendChild(this.dimsGroup);
+
     this.leadLine = document.createElementNS(svgNS, "line");
     this.leadLine.setAttribute("stroke", "#141414");
-    this.leadLine.setAttribute("stroke-width", "1.8");
-    this.leadLine.setAttribute("stroke-dasharray", "5 4");
+    this.leadLine.setAttribute("stroke-width", "1.65");
+
     this.targetCircle = document.createElementNS(svgNS, "circle");
-    this.targetCircle.setAttribute("r", "10");
-    this.targetCircle.setAttribute("fill", "rgba(230, 80, 46, 0.14)");
-    this.targetCircle.setAttribute("stroke", "#e6502e");
-    this.targetCircle.setAttribute("stroke-width", "2.5");
+    this.targetCircle.setAttribute("r", "6");
+    this.targetCircle.setAttribute("fill", "#ffffff");
+    this.targetCircle.setAttribute("stroke", "#141414");
+    this.targetCircle.setAttribute("stroke-width", "2.2");
+
+    this.motionArrowEl = document.createElementNS(svgNS, "path");
+    this.motionArrowEl.setAttribute("fill", "#141414");
+    this.motionArrowEl.setAttribute("stroke", "#ffffff");
+    this.motionArrowEl.setAttribute("stroke-width", "2.6");
+    this.motionArrowEl.setAttribute("paint-order", "stroke");
+    this.motionArrowEl.setAttribute("stroke-linejoin", "round");
+
     this.leadsSvg.appendChild(this.leadLine);
     this.leadsSvg.appendChild(this.targetCircle);
+    this.leadsSvg.appendChild(this.motionArrowEl);
     container.appendChild(this.leadsSvg);
 
     // Circular Magnifying Detail Loupe (#inset) in top-right corner
@@ -1102,6 +1143,7 @@ export class TaskSimulatorScene {
       const roll = cyl(0.05, 0.05, DROP_WIDTH, std(i === 0 ? 0xe9e2cf : 0xe3dcc8, { roughness: 0.85 }));
       roll.rotation.x = Math.PI / 2;
       roll.position.set(x, TABLE.y + 0.05, (TABLE.z0 + TABLE.z1) / 2);
+      this.addHierarchyOutlines(roll, "context");
       this.scene.add(roll);
     });
 
@@ -1121,6 +1163,7 @@ export class TaskSimulatorScene {
       handle.position.y = 0.3;
       g.add(shell, bottom, liq, handle);
       g.position.set(...pos);
+      this.addHierarchyOutlines(g, "context");
       this.scene.add(g);
     };
     bucket(SOAP_BUCKET, 0x6fb3e8);
@@ -1128,6 +1171,7 @@ export class TaskSimulatorScene {
 
     const tray = box(0.3, 0.04, 0.38, std(0x9aa3a8, { metalness: 0.3 }));
     tray.position.set(0.55, 0.02, 0.75);
+    this.addHierarchyOutlines(tray, "context");
     const puddle = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.2), std(0xf4f1ea, { roughness: 0.2 }));
     puddle.rotation.x = -Math.PI / 2;
     puddle.position.set(0.55, 0.042, 0.82);
@@ -1152,6 +1196,7 @@ export class TaskSimulatorScene {
     });
     lad.position.set(-1.65, 0, 1.4);
     lad.rotation.y = 0.4;
+    this.addHierarchyOutlines(lad, "context");
     this.scene.add(lad);
   }
 
@@ -1161,29 +1206,44 @@ export class TaskSimulatorScene {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
+    setLineArtResolution(w, h);
     this.renderScene();
   }
 
   private renderScene() {
     const w = this.container.clientWidth || 800;
     const h = this.container.clientHeight || 500;
+    const step = WALLPAPER_TASK[Math.max(0, this.stepIdx)];
 
     // 1. Render the Circular 3.5x Detail Loupe into this.insetCanvas first (single WebGL context!)
     const showLoupe = this.showMacro && w > 480 && h > 320;
     if (this.insetCanvas && this.detailTagEl && this.leadsSvg) {
       this.insetCanvas.style.display = showLoupe ? "block" : "none";
       this.detailTagEl.style.display = showLoupe ? "block" : "none";
-      this.leadsSvg.style.display = showLoupe && !this.partsTrayMode ? "block" : "none";
+      this.leadsSvg.style.display = !this.partsTrayMode ? "block" : "none";
     }
     if (showLoupe && this.insetCtx) {
       const size = Math.min(204, Math.floor(Math.min(w, h) * 0.42));
       const dpr = this.renderer.getPixelRatio();
+      setLineArtResolution(size, size);
       this.macroCamera.aspect = 1;
       this.macroCamera.updateProjectionMatrix();
+      const prevRing = this.focusRing.visible;
+      const prevCone = this.arrowCone.visible;
+      const prevMarker = this.marker.visible;
+      const prevPath = this.pathLines.visible;
+      this.focusRing.visible = false;
+      this.arrowCone.visible = false;
+      this.marker.visible = false;
+      this.pathLines.visible = false;
       this.renderer.setScissorTest(true);
       this.renderer.setScissor(0, 0, size, size);
       this.renderer.setViewport(0, 0, size, size);
       this.renderer.render(this.scene, this.macroCamera);
+      this.focusRing.visible = prevRing;
+      this.arrowCone.visible = prevCone;
+      this.marker.visible = prevMarker;
+      this.pathLines.visible = prevPath;
       this.insetCtx.clearRect(0, 0, this.insetCanvas.width, this.insetCanvas.height);
       this.insetCtx.drawImage(
         this.renderer.domElement,
@@ -1197,29 +1257,116 @@ export class TaskSimulatorScene {
         this.insetCanvas.height,
       );
       this.renderer.setScissorTest(false);
+
+      // Draw crisp CAD Vector Action / Rotation Arrow inside the circular Callout Loupe (Nutlope/bygga style)
+      if (!this.partsTrayMode && step && typeof Path2D !== "undefined") {
+        const ic = this.insetCtx;
+        const cw = this.insetCanvas.width;
+        const ch = this.insetCanvas.height;
+        let calloutPath = "";
+        if (step.primitive === "unscrew" || step.primitive === "screw" || step.primitive === "stir") {
+          const dir = step.primitive === "unscrew" ? -1 : 1;
+          calloutPath = arcArrow(cw * 0.5, ch * 0.48, cw * 0.31, -Math.PI * 0.72, dir > 0 ? Math.PI * 0.35 : -Math.PI * 1.55);
+        } else if (step.primitive === "trim" || step.primitive === "cutOnTable" || step.primitive === "reliefCut") {
+          calloutPath = arrowPath({ x: cw * 0.24, y: ch * 0.34 }, { x: cw * 0.74, y: ch * 0.64 }, 1.45);
+        } else if (step.primitive === "seamRoll" || step.primitive === "smooth" || step.primitive === "pasteBand") {
+          calloutPath = arrowPath({ x: cw * 0.28, y: ch * 0.22 }, { x: cw * 0.28, y: ch * 0.76 }, 1.45);
+        }
+        if (calloutPath) {
+          const p2d = new Path2D(calloutPath);
+          ic.save();
+          ic.lineJoin = "round";
+          ic.strokeStyle = "#ffffff";
+          ic.lineWidth = 4.5;
+          ic.stroke(p2d);
+          ic.fillStyle = "#141414";
+          ic.fill(p2d);
+          ic.restore();
+        }
+      }
     }
 
     // 2. Render the Main 3D Stage across 100% of the canvas
+    setLineArtResolution(w, h);
     this.renderer.setViewport(0, 0, w, h);
     this.renderer.setScissorTest(false);
     this.renderer.render(this.scene, this.camera);
 
-    // 3. Project the 3D Target Ring & Dashed SVG Leader Line (#leads)
-    if (showLoupe && !this.partsTrayMode && this.leadLine && this.targetCircle) {
+    // 3. Project the Tangent-Circumference Leader Line, Vector Motion Arrow & Architectural Dimension Lines
+    if (!this.partsTrayMode && this.leadLine && this.targetCircle) {
       const v = this.macroTarget.clone().project(this.camera);
       const tx = (v.x * 0.5 + 0.5) * w;
       const ty = (-v.y * 0.5 + 0.5) * h;
-      const dialSize = this.insetCanvas.clientWidth || 196;
-      const padRight = 24;
-      const padTop = 54;
-      const cx = w - padRight - dialSize / 2;
-      const cy = padTop + dialSize / 2;
-      this.targetCircle.setAttribute("cx", tx.toFixed(1));
-      this.targetCircle.setAttribute("cy", ty.toFixed(1));
-      this.leadLine.setAttribute("x1", cx.toFixed(1));
-      this.leadLine.setAttribute("y1", (cy + dialSize / 2 - 4).toFixed(1));
-      this.leadLine.setAttribute("x2", tx.toFixed(1));
-      this.leadLine.setAttribute("y2", ty.toFixed(1));
+
+      if (showLoupe) {
+        const dialSize = this.insetCanvas.clientWidth || 196;
+        const r = dialSize / 2;
+        const padRight = 24;
+        const padTop = 54;
+        const cx = w - padRight - r;
+        const cy = padTop + r;
+        // Connect from 3D target dot to exact tangent point on circular callout rim
+        const ang = Math.atan2(ty - cy, tx - cx);
+        const ex = cx + Math.cos(ang) * r;
+        const ey = cy + Math.sin(ang) * r;
+        this.targetCircle.setAttribute("cx", tx.toFixed(1));
+        this.targetCircle.setAttribute("cy", ty.toFixed(1));
+        this.leadLine.setAttribute("x1", ex.toFixed(1));
+        this.leadLine.setAttribute("y1", ey.toFixed(1));
+        this.leadLine.setAttribute("x2", tx.toFixed(1));
+        this.leadLine.setAttribute("y2", ty.toFixed(1));
+        this.leadLine.style.display = "block";
+        this.targetCircle.style.display = "block";
+      } else {
+        this.leadLine.style.display = "none";
+        this.targetCircle.style.display = "none";
+      }
+
+      // Screen-space vector motion arrow along active tool trajectory
+      if (step && this.motionArrowEl) {
+        const s0 = sampleStep(step, this.progress);
+        const s1 = sampleStep(step, Math.min(1, this.progress + 0.12));
+        const p0 = new THREE.Vector3(...s0.primary.p).project(this.camera);
+        const p1 = new THREE.Vector3(...s1.primary.p).project(this.camera);
+        const a0 = { x: (p0.x * 0.5 + 0.5) * w, y: (-p0.y * 0.5 + 0.5) * h };
+        const a1 = { x: (p1.x * 0.5 + 0.5) * w, y: (-p1.y * 0.5 + 0.5) * h };
+        const dx = a1.x - a0.x;
+        const dy = a1.y - a0.y;
+        const segLen = Math.hypot(dx, dy);
+        if (segLen > 14 && p0.z < 1 && p1.z < 1) {
+          const ux = dx / segLen;
+          const uy = dy / segLen;
+          const start = { x: a0.x + ux * 16, y: a0.y + uy * 16 };
+          const end = { x: a0.x + ux * Math.min(68, segLen + 28), y: a0.y + uy * Math.min(68, segLen + 28) };
+          this.motionArrowEl.setAttribute("d", arrowPath(start, end, 1.15));
+        } else {
+          this.motionArrowEl.setAttribute("d", "");
+        }
+      }
+
+      // Architectural 3D-projected dimension lines (416 cm wall width, 255 cm height, 53 cm drop width)
+      if (this.dimsGroup) {
+        const proj = (x: number, y: number, z: number) => {
+          const pv = new THREE.Vector3(x, y, z).project(this.camera);
+          return { x: (pv.x * 0.5 + 0.5) * w, y: (-pv.y * 0.5 + 0.5) * h, ok: pv.z > 0 && pv.z < 1 };
+        };
+        const wl = proj(WALL.x0, WALL.height, 0);
+        const wr = proj(WALL.x1, WALL.height, 0);
+        const wb = proj(WALL.x0, 0, 0);
+        const d0 = proj(dropRect(0).x0, WALL.baseboard, 0.01);
+        const d1 = proj(dropRect(0).x1, WALL.baseboard, 0.01);
+        let svgMarkup = "";
+        if (wl.ok && wr.ok) {
+          svgMarkup += dimensionLineSvg(wl, wr, -18, "416 cm (8 DROPS)");
+        }
+        if (wb.ok && wl.ok) {
+          svgMarkup += dimensionLineSvg(wb, wl, -22, "255 cm");
+        }
+        if (d0.ok && d1.ok && Math.hypot(d1.x - d0.x, d1.y - d0.y) > 44) {
+          svgMarkup += dimensionLineSvg(d0, d1, 18, "53 cm DROP");
+        }
+        this.dimsGroup.innerHTML = svgMarkup;
+      }
     }
 
     // 4. Project Step 0 Parts Tray floating labels with collision avoidance
@@ -1326,7 +1473,13 @@ export class TaskSimulatorScene {
     (this.floorMesh.material as THREE.MeshStandardMaterial).opacity = isDrawing ? 0.22 : 1;
     (this.floorMesh.material as THREE.MeshStandardMaterial).transparent = isDrawing;
     this.drawingOutlines.forEach((l) => {
-      l.visible = isDrawing;
+      l.visible = true;
+      l.material.linewidth = isDrawing ? 1.95 : 0.85;
+      l.material.opacity = isDrawing ? 0.94 : 0.26;
+      l.material.transparent = true;
+    });
+    this.cadTrackedGroups.forEach((item) => {
+      applyGroupViewMode(item.root, { viewMode: mode, emphasis: item.emphasis });
     });
     this.renderScene();
   }
@@ -1494,6 +1647,10 @@ export class TaskSimulatorScene {
     this.controls.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
+    this.leadsSvg?.remove();
+    this.insetCanvas?.remove();
+    this.detailTagEl?.remove();
+    this.trayAnchors.forEach((a) => a.el.remove());
   }
 
   setFrame(stepIdx: number, progress: number) {
