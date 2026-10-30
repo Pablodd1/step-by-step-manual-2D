@@ -18,6 +18,7 @@ import {
   dropRect,
   sampleStep,
   stepMotion,
+  type SimulatorSurfaceMode,
   type TaskStep,
   type ToolId,
   type Vec3,
@@ -25,7 +26,10 @@ import {
 
 const SKIN = 0xd8a27c;
 const GLOVE = 0x2f6fd6;
-const SLEEVE = 0x2c3b33;
+const SLEEVE = 0x253029;
+const VEST = 0x1d2621;
+const PANTS = 0x2b333a;
+const BOOT = 0x3b2a1e;
 const ACID = 0xd2fd78;
 
 const std = (color: number, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
@@ -63,7 +67,7 @@ function zCyl(r: number, z0: number, z1: number, mat: THREE.Material) {
   return m;
 }
 
-/** Plane anchored at its left edge (scale.x reveals left→right). */
+/** Plane anchored at its left/right/top/bottom edge. */
 function anchoredPlane(w: number, h: number, mat: THREE.Material, anchor: "left" | "right" | "top" | "bottom") {
   const g = new THREE.PlaneGeometry(w, h);
   if (anchor === "left") g.translate(w / 2, 0, 0);
@@ -73,52 +77,177 @@ function anchoredPlane(w: number, h: number, mat: THREE.Material, anchor: "left"
   return new THREE.Mesh(g, mat);
 }
 
-function wallpaperTexture(): THREE.CanvasTexture {
-  // 52 cm × 64 cm repeat tile @ 5 px/cm, straight match.
+/** Analytical 2-bone IK solver returning the world-space joint (elbow or knee) position. */
+function solveTwoBoneIK(
+  root: THREE.Vector3,
+  target: THREE.Vector3,
+  len1: number,
+  len2: number,
+  poleDir: THREE.Vector3,
+): THREE.Vector3 {
+  const diff = new THREE.Vector3().subVectors(target, root);
+  const dist = Math.max(0.05, Math.min(len1 + len2 - 0.005, diff.length()));
+  const forward = diff.clone().normalize();
+  const cosAngle = THREE.MathUtils.clamp(
+    (len1 * len1 + dist * dist - len2 * len2) / (2 * len1 * dist),
+    -1,
+    1,
+  );
+  const sinAngle = Math.sqrt(Math.max(0, 1 - cosAngle * cosAngle));
+  let bendAxis = poleDir.clone().addScaledVector(forward, -poleDir.dot(forward));
+  if (bendAxis.lengthSq() < 1e-5) {
+    bendAxis.set(0, -1, 0.5).normalize();
+  } else {
+    bendAxis.normalize();
+  }
+  return root
+    .clone()
+    .addScaledVector(forward, len1 * cosAngle)
+    .addScaledVector(bendAxis, len1 * sinAngle);
+}
+
+/** Orient and scale a unit-height Y-axis cylinder/mesh between point A and point B. */
+function placeSegmentBetween(mesh: THREE.Object3D, a: THREE.Vector3, b: THREE.Vector3) {
+  const dir = new THREE.Vector3().subVectors(b, a);
+  const len = Math.max(0.001, dir.length());
+  mesh.position.copy(a).addScaledVector(dir, 0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
+  mesh.scale.set(1, len, 1);
+}
+
+// ---------------------------------------------------------------------------
+// Surface Textures (Botanical + UNITEC FT_13 Marble Roll + FT_03 Eclipse + FT_15 WPC)
+// ---------------------------------------------------------------------------
+
+function wallpaperTexture(mode: SimulatorSurfaceMode = "botanical"): THREE.CanvasTexture {
   const c = document.createElement("canvas");
   c.width = 260;
   c.height = 320;
   const g = c.getContext("2d")!;
-  g.fillStyle = "#ece6d5";
-  g.fillRect(0, 0, 260, 320);
-  const rand = rng(7);
-  const leaves: [number, number, number, number, string][] = [];
-  for (let i = 0; i < 22; i += 1) {
-    leaves.push([rand() * 260, rand() * 320, 16 + rand() * 18, rand() * Math.PI, rand() > 0.5 ? "#55704d" : "#8aa27c"]);
+  const rand = rng(mode === "botanical" ? 7 : mode === "marble-roll" ? 19 : mode === "eclipse-sheet" ? 31 : 43);
+
+  if (mode === "marble-roll") {
+    // UNITEC FT_13 Marble Adhesive Roll (White/Gray Carrara Marble Vinyl)
+    const grad = g.createLinearGradient(0, 0, 260, 320);
+    grad.addColorStop(0, "#f5f4f0");
+    grad.addColorStop(0.5, "#eae8e2");
+    grad.addColorStop(1, "#f3f2ee");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 260, 320);
+    for (let i = 0; i < 9; i += 1) {
+      g.strokeStyle = i % 3 === 0 ? "rgba(145,130,105,0.42)" : "rgba(110,118,126,0.35)";
+      g.lineWidth = i % 2 === 0 ? 2.4 : 1.3;
+      g.beginPath();
+      let x = rand() * 260;
+      g.moveTo(x, -10);
+      for (let y = 0; y <= 330; y += 40) {
+        x += (rand() - 0.48) * 42;
+        g.lineTo(x, y);
+      }
+      g.stroke();
+    }
+  } else if (mode === "eclipse-sheet") {
+    // UNITEC FT_03 Lámina Mármol Eclipse M-11 (High-gloss Obsidian & Gold/White Veining)
+    const grad = g.createLinearGradient(0, 0, 260, 320);
+    grad.addColorStop(0, "#17181b");
+    grad.addColorStop(0.5, "#23252a");
+    grad.addColorStop(1, "#141518");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 260, 320);
+    for (let i = 0; i < 10; i += 1) {
+      g.strokeStyle = i % 3 === 0 ? "rgba(218,185,120,0.58)" : "rgba(235,238,242,0.38)";
+      g.lineWidth = i % 3 === 0 ? 2.6 : 1.2;
+      g.beginPath();
+      let x = rand() * 260;
+      g.moveTo(x, -10);
+      for (let y = 0; y <= 330; y += 35) {
+        x += (rand() - 0.48) * 38;
+        g.lineTo(x, y);
+      }
+      g.stroke();
+    }
+  } else if (mode === "wpc-choco") {
+    // UNITEC FT_15 Interior WPC Panel Choco Mix (Vertical Fluted Slats)
+    g.fillStyle = "#2b1d14";
+    g.fillRect(0, 0, 260, 320);
+    const slats = 8;
+    const sw = 260 / slats;
+    for (let i = 0; i < slats; i += 1) {
+      const x = i * sw;
+      g.fillStyle = "#160e09";
+      g.fillRect(x, 0, sw * 0.28, 320);
+      const fluteGrad = g.createLinearGradient(x + sw * 0.28, 0, x + sw, 0);
+      fluteGrad.addColorStop(0, "#4b3222");
+      fluteGrad.addColorStop(0.5, "#63432e");
+      fluteGrad.addColorStop(1, "#3a2518");
+      g.fillStyle = fluteGrad;
+      g.fillRect(x + sw * 0.28, 0, sw * 0.72, 320);
+    }
+  } else {
+    // Botanical Non-Woven Paste-the-Wall Wallpaper
+    g.fillStyle = "#ece6d5";
+    g.fillRect(0, 0, 260, 320);
+    const leaves: [number, number, number, number, string][] = [];
+    for (let i = 0; i < 22; i += 1) {
+      leaves.push([rand() * 260, rand() * 320, 16 + rand() * 18, rand() * Math.PI, rand() > 0.5 ? "#55704d" : "#8aa27c"]);
+    }
+    const drawLeaf = (x: number, y: number, r: number, a: number, col: string) => {
+      g.save();
+      g.translate(x, y);
+      g.rotate(a);
+      g.fillStyle = col;
+      g.beginPath();
+      g.ellipse(0, 0, r * 0.36, r, 0, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = "rgba(30,45,30,0.55)";
+      g.lineWidth = 1.2;
+      g.beginPath();
+      g.moveTo(0, -r);
+      g.lineTo(0, r);
+      g.stroke();
+      g.restore();
+    };
+    g.strokeStyle = "#6f8466";
+    g.lineWidth = 2;
+    for (let i = 0; i < 4; i += 1) {
+      const x = 30 + i * 65;
+      g.beginPath();
+      g.moveTo(x, -10);
+      g.bezierCurveTo(x + 30, 100, x - 30, 220, x, 330);
+      g.stroke();
+    }
+    for (const [x, y, r, a, col] of leaves) {
+      for (const dx of [-260, 0, 260]) for (const dy of [-320, 0, 320]) drawLeaf(x + dx, y + dy, r, a, col);
+    }
   }
-  const drawLeaf = (x: number, y: number, r: number, a: number, col: string) => {
-    g.save();
-    g.translate(x, y);
-    g.rotate(a);
-    g.fillStyle = col;
-    g.beginPath();
-    g.ellipse(0, 0, r * 0.36, r, 0, 0, Math.PI * 2);
-    g.fill();
-    g.strokeStyle = "rgba(30,45,30,0.55)";
-    g.lineWidth = 1.2;
-    g.beginPath();
-    g.moveTo(0, -r);
-    g.lineTo(0, r);
-    g.stroke();
-    g.restore();
-  };
-  g.strokeStyle = "#6f8466";
-  g.lineWidth = 2;
-  for (let i = 0; i < 4; i += 1) {
-    const x = 30 + i * 65;
-    g.beginPath();
-    g.moveTo(x, -10);
-    g.bezierCurveTo(x + 30, 100, x - 30, 220, x, 330);
-    g.stroke();
-  }
-  for (const [x, y, r, a, col] of leaves) {
-    for (const dx of [-260, 0, 260]) for (const dy of [-320, 0, 320]) drawLeaf(x + dx, y + dy, r, a, col);
-  }
+
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.anisotropy = 8;
+  return tex;
+}
+
+function rulerTexture(): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 64;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#d5dade";
+  g.fillRect(0, 0, 512, 64);
+  g.fillStyle = "#22282a";
+  for (let i = 0; i <= 60; i += 1) {
+    const x = Math.round((i / 60) * 496) + 8;
+    const h = i % 10 === 0 ? 22 : i % 5 === 0 ? 15 : 9;
+    g.fillRect(x, 0, i % 10 === 0 ? 2 : 1, h);
+    g.fillRect(x, 64 - h, i % 10 === 0 ? 2 : 1, h);
+  }
+  g.fillStyle = "#18201c";
+  g.font = "bold 11px monospace";
+  g.fillText("UNITEC PRO 600mm STEEL STRAIGHTEDGE", 130, 36);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
@@ -151,58 +280,78 @@ function woodTexture(): THREE.CanvasTexture {
 }
 
 // ---------------------------------------------------------------------------
-// Hand rig
+// Articulated Hand + Full 3D Human Installer Rig (with Two-Bone IK Arms & Legs)
 // ---------------------------------------------------------------------------
 
 class HandRig {
   readonly group = new THREE.Group();
-  readonly forearm: THREE.Mesh;
+  readonly wristLocal = new THREE.Vector3(0, -0.072, 0.004);
   private fingerPivots: THREE.Group[] = [];
+  private distalPivots: THREE.Group[] = [];
   private thumbPivot = new THREE.Group();
-  private skinMat = std(SKIN, { roughness: 0.55 });
+  private skinMat = std(SKIN, { roughness: 0.52 });
   private gloveMat = std(GLOVE, { roughness: 0.35 });
   private parts: THREE.Mesh[] = [];
 
   constructor(private side: 1 | -1, scene: THREE.Scene) {
-    const palm = box(0.085, 0.095, 0.03, this.skinMat);
-    this.parts.push(palm);
-    this.group.add(palm);
+    const palm = box(0.084, 0.092, 0.028, this.skinMat);
+    const knuckles = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.082, 12), this.skinMat);
+    knuckles.rotation.z = Math.PI / 2;
+    knuckles.position.set(0, 0.044, 0);
+    this.parts.push(palm, knuckles);
+    this.group.add(palm, knuckles);
+
     const fingerX = [-0.03, -0.01, 0.01, 0.03];
-    const fingerLen = [0.058, 0.068, 0.064, 0.05];
+    const proxLen = [0.034, 0.04, 0.038, 0.03];
+    const distLen = [0.026, 0.03, 0.028, 0.024];
     fingerX.forEach((x, i) => {
       const pivot = new THREE.Group();
-      pivot.position.set(x * side, 0.048, 0);
-      const f = new THREE.Mesh(new THREE.CapsuleGeometry(0.0085, fingerLen[i], 4, 8), this.skinMat);
-      f.position.y = fingerLen[i] / 2 + 0.006;
-      f.castShadow = true;
-      this.parts.push(f);
-      pivot.add(f);
+      pivot.position.set(x * side, 0.046, 0);
+      const prox = new THREE.Mesh(new THREE.CapsuleGeometry(0.0082, proxLen[i], 4, 8), this.skinMat);
+      prox.position.y = proxLen[i] / 2 + 0.004;
+      prox.castShadow = true;
+      this.parts.push(prox);
+      pivot.add(prox);
+
+      const distal = new THREE.Group();
+      distal.position.set(0, proxLen[i] + 0.006, 0);
+      const tipMesh = new THREE.Mesh(new THREE.CapsuleGeometry(0.0072, distLen[i], 4, 8), this.skinMat);
+      tipMesh.position.y = distLen[i] / 2 + 0.002;
+      tipMesh.castShadow = true;
+      this.parts.push(tipMesh);
+      distal.add(tipMesh);
+      pivot.add(distal);
+
       this.group.add(pivot);
       this.fingerPivots.push(pivot);
+      this.distalPivots.push(distal);
     });
-    this.thumbPivot.position.set(0.045 * side, -0.01, -0.004);
-    this.thumbPivot.rotation.z = -0.75 * side;
-    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.01, 0.045, 4, 8), this.skinMat);
-    thumb.position.y = 0.03;
+
+    this.thumbPivot.position.set(0.044 * side, -0.008, -0.004);
+    this.thumbPivot.rotation.z = -0.68 * side;
+    const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.0095, 0.046, 4, 8), this.skinMat);
+    thumb.position.y = 0.028;
     thumb.castShadow = true;
     this.parts.push(thumb);
     this.thumbPivot.add(thumb);
     this.group.add(this.thumbPivot);
 
-    const cuff = cyl(0.034, 0.034, 0.03, std(SLEEVE, { roughness: 0.9 }));
-    cuff.position.set(0, -0.065, 0.004);
+    const cuff = cyl(0.034, 0.036, 0.028, std(SLEEVE, { roughness: 0.85 }));
+    cuff.position.set(0, -0.06, 0.003);
     this.group.add(cuff);
 
-    this.forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.042, 1, 16), std(SLEEVE, { roughness: 0.9 }));
-    this.forearm.castShadow = true;
-    scene.add(this.group, this.forearm);
+    scene.add(this.group);
   }
 
-  setCurl(curl: number) {
+  setCurl(curl: number, splay = 0) {
     this.fingerPivots.forEach((p, i) => {
-      p.rotation.x = -curl * (1.25 + i * 0.05);
+      p.rotation.x = -curl * (1.05 + i * 0.06);
+      p.rotation.z = (i - 1.5) * splay * -0.18 * this.side;
     });
-    this.thumbPivot.rotation.x = -curl * 0.7;
+    this.distalPivots.forEach((d, i) => {
+      d.rotation.x = -curl * (0.85 + i * 0.04);
+    });
+    this.thumbPivot.rotation.x = -curl * 0.65;
   }
 
   setGlove(on: boolean) {
@@ -212,22 +361,288 @@ class HandRig {
     });
   }
 
-  place(pos: THREE.Vector3, quat: THREE.Quaternion) {
+  place(pos: THREE.Vector3, quat: THREE.Quaternion): THREE.Vector3 {
     this.group.position.copy(pos);
     this.group.quaternion.copy(quat);
     this.group.updateMatrixWorld(true);
-    const wrist = new THREE.Vector3(0, -0.075, 0.006).applyMatrix4(this.group.matrixWorld);
-    const elbow = wrist.clone().add(new THREE.Vector3(0.14 * this.side, -0.3, 0.34));
-    const dir = new THREE.Vector3().subVectors(elbow, wrist);
-    const len = dir.length();
-    this.forearm.position.copy(wrist).addScaledVector(dir, 0.5);
-    this.forearm.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-    this.forearm.scale.set(1, len, 1);
+    return this.wristLocal.clone().applyMatrix4(this.group.matrixWorld);
   }
 
   setVisible(v: boolean) {
     this.group.visible = v;
-    this.forearm.visible = v;
+  }
+}
+
+class HumanInstallerRig {
+  readonly root = new THREE.Group();
+  private torsoGroup = new THREE.Group();
+  private headGroup = new THREE.Group();
+  private glassesMesh: THREE.Mesh;
+  private maskMesh: THREE.Mesh;
+  private shoulderL = new THREE.Object3D();
+  private shoulderR = new THREE.Object3D();
+  private hipL = new THREE.Object3D();
+  private hipR = new THREE.Object3D();
+
+  private upperArmL: THREE.Mesh;
+  private forearmL: THREE.Mesh;
+  private elbowL: THREE.Mesh;
+  private upperArmR: THREE.Mesh;
+  private forearmR: THREE.Mesh;
+  private elbowR: THREE.Mesh;
+
+  private thighL: THREE.Mesh;
+  private shinL: THREE.Mesh;
+  private kneeL: THREE.Mesh;
+  private bootL: THREE.Group;
+  private thighR: THREE.Mesh;
+  private shinR: THREE.Mesh;
+  private kneeR: THREE.Mesh;
+  private bootR: THREE.Group;
+
+  private stepBench: THREE.Group;
+
+  constructor(scene: THREE.Scene) {
+    const skinMat = std(SKIN, { roughness: 0.55 });
+    const sleeveMat = std(SLEEVE, { roughness: 0.85 });
+    const vestMat = std(VEST, { roughness: 0.7 });
+    const acidMat = std(ACID, { roughness: 0.4, emissive: 0x3a4d14, emissiveIntensity: 0.25 });
+    const pantsMat = std(PANTS, { roughness: 0.85 });
+    const bootMat = std(BOOT, { roughness: 0.75 });
+
+    // Pelvis / hips + tool belt
+    const pelvis = box(0.31, 0.14, 0.19, pantsMat);
+    pelvis.position.set(0, 0.02, 0);
+    const belt = box(0.325, 0.045, 0.205, std(0x181a18, { roughness: 0.5 }));
+    belt.position.set(0, 0.075, 0);
+    const buckle = box(0.045, 0.048, 0.015, acidMat);
+    buckle.position.set(0, 0.075, 0.1);
+    const holster = box(0.05, 0.12, 0.06, std(0x222622));
+    holster.position.set(0.18, 0.02, 0.02);
+    this.torsoGroup.add(pelvis, belt, buckle, holster);
+
+    // Chest + UNITEC/PLUMB utility vest with high-vis trim
+    const chest = box(0.34, 0.44, 0.21, vestMat);
+    chest.position.set(0, 0.31, 0);
+    const stripeL = box(0.032, 0.42, 0.216, acidMat);
+    stripeL.position.set(-0.1, 0.31, 0);
+    const stripeR = box(0.032, 0.42, 0.216, acidMat);
+    stripeR.position.set(0.1, 0.31, 0);
+    const collar = cyl(0.068, 0.078, 0.06, skinMat, 16);
+    collar.position.set(0, 0.555, 0.01);
+    this.torsoGroup.add(chest, stripeL, stripeR, collar);
+
+    // Shoulder & Hip sockets in torsoGroup local coords (+Z is chest/face forward, so anatomical Left is +X and Right is -X)
+    this.shoulderL.position.set(0.205, 0.48, 0.01);
+    this.shoulderR.position.set(-0.205, 0.48, 0.01);
+    this.hipL.position.set(0.095, -0.03, 0);
+    this.hipR.position.set(-0.095, -0.03, 0);
+    this.torsoGroup.add(this.shoulderL, this.shoulderR, this.hipL, this.hipR);
+
+    // Head + Cap + Safety Glasses + Dust Mask
+    this.headGroup.position.set(0, 0.65, 0.015);
+    const cranium = new THREE.Mesh(new THREE.SphereGeometry(0.105, 20, 16), skinMat);
+    cranium.scale.set(0.92, 1.08, 0.98);
+    cranium.castShadow = true;
+    const nose = box(0.024, 0.036, 0.028, skinMat);
+    nose.position.set(0, -0.005, 0.1);
+    const capCrown = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      vestMat,
+    );
+    capCrown.position.y = 0.02;
+    const capVisor = box(0.15, 0.01, 0.09, vestMat);
+    capVisor.position.set(0, 0.035, 0.11);
+    capVisor.rotation.x = 0.12;
+    const capBand = box(0.09, 0.018, 0.006, acidMat);
+    capBand.position.set(0, 0.055, 0.106);
+
+    this.glassesMesh = box(0.145, 0.036, 0.03, new THREE.MeshPhysicalMaterial({
+      color: 0xa8dcff,
+      transmission: 0.72,
+      opacity: 1,
+      transparent: true,
+      roughness: 0.15,
+    }));
+    this.glassesMesh.position.set(0, 0.01, 0.096);
+
+    this.maskMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.068, 14, 12),
+      std(0xf2f4f7, { roughness: 0.8 }),
+    );
+    this.maskMesh.scale.set(1.1, 0.85, 0.85);
+    this.maskMesh.position.set(0, -0.042, 0.072);
+
+    this.headGroup.add(cranium, nose, capCrown, capVisor, capBand, this.glassesMesh, this.maskMesh);
+    this.torsoGroup.add(this.headGroup);
+    this.root.add(this.torsoGroup);
+
+    // Arms (world-space segments updated via 2-bone IK)
+    this.upperArmL = cyl(0.044, 0.038, 1, sleeveMat, 14);
+    this.forearmL = cyl(0.037, 0.031, 1, sleeveMat, 14);
+    this.elbowL = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 10), sleeveMat);
+    this.upperArmR = cyl(0.044, 0.038, 1, sleeveMat, 14);
+    this.forearmR = cyl(0.037, 0.031, 1, sleeveMat, 14);
+    this.elbowR = new THREE.Mesh(new THREE.SphereGeometry(0.04, 12, 10), sleeveMat);
+
+    // Legs & Boots
+    this.thighL = cyl(0.064, 0.052, 1, pantsMat, 14);
+    this.shinL = cyl(0.05, 0.042, 1, pantsMat, 14);
+    this.kneeL = new THREE.Mesh(new THREE.SphereGeometry(0.052, 12, 10), pantsMat);
+    this.thighR = cyl(0.064, 0.052, 1, pantsMat, 14);
+    this.shinR = cyl(0.05, 0.042, 1, pantsMat, 14);
+    this.kneeR = new THREE.Mesh(new THREE.SphereGeometry(0.052, 12, 10), pantsMat);
+
+    const makeBoot = () => {
+      const g = new THREE.Group();
+      const sole = box(0.095, 0.025, 0.22, std(0x161616, { roughness: 0.9 }));
+      sole.position.set(0, 0.0125, 0.03);
+      const upper = box(0.088, 0.065, 0.18, bootMat);
+      upper.position.set(0, 0.05, 0.02);
+      g.add(sole, upper);
+      return g;
+    };
+    this.bootL = makeBoot();
+    this.bootR = makeBoot();
+
+    // Mobile work platform / step bench for high reach (y > 1.85 m)
+    const aluMat = std(0xc0c6cc, { metalness: 0.7, roughness: 0.3 });
+    this.stepBench = new THREE.Group();
+    const deck = box(0.62, 0.03, 0.36, aluMat);
+    deck.position.y = 0.435;
+    this.stepBench.add(deck);
+    [
+      [-0.28, -0.15],
+      [0.28, -0.15],
+      [-0.28, 0.15],
+      [0.28, 0.15],
+    ].forEach(([lx, lz]) => {
+      const leg = box(0.028, 0.435, 0.028, aluMat);
+      leg.position.set(lx, 0.2175, lz);
+      this.stepBench.add(leg);
+    });
+    this.stepBench.visible = false;
+
+    scene.add(
+      this.root,
+      this.upperArmL,
+      this.forearmL,
+      this.elbowL,
+      this.upperArmR,
+      this.forearmR,
+      this.elbowR,
+      this.thighL,
+      this.shinL,
+      this.kneeL,
+      this.bootL,
+      this.thighR,
+      this.shinR,
+      this.kneeR,
+      this.bootR,
+      this.stepBench,
+    );
+  }
+
+  update(
+    tip: THREE.Vector3,
+    wristR: THREE.Vector3,
+    wristL: THREE.Vector3,
+    step: TaskStep,
+  ) {
+    this.glassesMesh.visible = step.ppe.includes("safety glasses") || step.primitive === "trim" || step.primitive === "cutOnTable" || step.primitive === "reliefCut";
+    this.maskMesh.visible = step.ppe.includes("dust mask");
+
+    // Position the installer's body so it never occludes the camera's line of sight to the active tool tip
+    let bodyX = tip.x - 0.32;
+    let bodyZ = Math.max(0.62, tip.z + 0.54);
+    let bodyYaw = Math.PI - 0.36; // Facing -Z (the wall), angled slightly toward the right hand
+
+    if (step.primitive === "cutOnTable") {
+      bodyX = 1.98;
+      bodyZ = (TABLE.z0 + TABLE.z1) / 2;
+      bodyYaw = -Math.PI / 2;
+    } else if (step.primitive === "stir") {
+      bodyX = PASTE_BUCKET[0] - 0.34;
+      bodyZ = PASTE_BUCKET[2] + 0.38;
+      bodyYaw = Math.PI - 0.55;
+    } else {
+      bodyX = THREE.MathUtils.clamp(tip.x - 0.32, WALL.x0 - 0.12, WALL.x1 - 0.15);
+    }
+
+    // Determine floor / platform elevation and crouch height
+    const onBench = step.primitive !== "cutOnTable" && step.primitive !== "stir" && tip.y > 1.88;
+    const floorY = onBench ? 0.45 : 0;
+    this.stepBench.visible = onBench;
+    if (onBench) {
+      this.stepBench.position.set(bodyX, 0, bodyZ);
+    }
+
+    // Natural hip height: crouch down when working near baseboard, floor, or low outlet
+    const targetReachY = tip.y - floorY;
+    const hipY = floorY + THREE.MathUtils.clamp(targetReachY - 0.28, 0.56, 0.94);
+    const crouchAmount = THREE.MathUtils.clamp((0.94 - (hipY - floorY)) / 0.38, 0, 1);
+
+    this.root.position.set(bodyX, hipY, bodyZ);
+    this.root.rotation.set(0, bodyYaw, 0);
+    // Lean torso slightly toward the work when crouching or cutting on table
+    const torsoLean = step.primitive === "cutOnTable" ? 0.26 : 0.12 + crouchAmount * 0.3;
+    this.torsoGroup.rotation.set(torsoLean, 0, 0);
+    this.root.updateMatrixWorld(true);
+
+    // Orient head to look toward the active tool tip
+    const headWorld = new THREE.Vector3();
+    this.headGroup.getWorldPosition(headWorld);
+    const lookDir = new THREE.Vector3().subVectors(tip, headWorld);
+    const pitch = THREE.MathUtils.clamp(-Math.atan2(lookDir.y, Math.hypot(lookDir.x, lookDir.z)), -0.55, 0.55);
+    this.headGroup.rotation.set(pitch - torsoLean * 0.6, 0.12, 0);
+    this.root.updateMatrixWorld(true);
+
+    // Two-Bone IK for Left & Right Arms
+    const sL = new THREE.Vector3();
+    const sR = new THREE.Vector3();
+    this.shoulderL.getWorldPosition(sL);
+    this.shoulderR.getWorldPosition(sR);
+
+    const poleL = new THREE.Vector3(-0.45, -0.75, 0.45).normalize();
+    const poleR = new THREE.Vector3(0.45, -0.75, 0.45).normalize();
+    const eL = solveTwoBoneIK(sL, wristL, 0.31, 0.29, poleL);
+    const eR = solveTwoBoneIK(sR, wristR, 0.31, 0.29, poleR);
+
+    placeSegmentBetween(this.upperArmL, sL, eL);
+    placeSegmentBetween(this.forearmL, eL, wristL);
+    this.elbowL.position.copy(eL);
+
+    placeSegmentBetween(this.upperArmR, sR, eR);
+    placeSegmentBetween(this.forearmR, eR, wristR);
+    this.elbowR.position.copy(eR);
+
+    // Two-Bone IK for Left & Right Legs + Boots (planted directly beneath hip sockets)
+    const hL = new THREE.Vector3();
+    const hR = new THREE.Vector3();
+    this.hipL.getWorldPosition(hL);
+    this.hipR.getWorldPosition(hR);
+
+    const footL = new THREE.Vector3(hL.x, floorY, hL.z - 0.02);
+    const footR = new THREE.Vector3(hR.x, floorY, hR.z + 0.03);
+    const ankleL = footL.clone().add(new THREE.Vector3(0, 0.065, 0));
+    const ankleR = footR.clone().add(new THREE.Vector3(0, 0.065, 0));
+
+    // Forward knee pole vector (pointing in the character's forward +Z direction)
+    const kneePole = new THREE.Vector3(Math.sin(bodyYaw), 0.15, Math.cos(bodyYaw)).normalize();
+    const kL = solveTwoBoneIK(hL, ankleL, 0.44, 0.43, kneePole);
+    const kR = solveTwoBoneIK(hR, ankleR, 0.44, 0.43, kneePole);
+
+    placeSegmentBetween(this.thighL, hL, kL);
+    placeSegmentBetween(this.shinL, kL, ankleL);
+    this.kneeL.position.copy(kL);
+    this.bootL.position.copy(footL);
+    this.bootL.rotation.set(0, bodyYaw, 0);
+
+    placeSegmentBetween(this.thighR, hR, kR);
+    placeSegmentBetween(this.shinR, kR, ankleR);
+    this.kneeR.position.copy(kR);
+    this.bootR.position.copy(footR);
+    this.bootR.rotation.set(0, bodyYaw, 0);
   }
 }
 
@@ -240,8 +655,8 @@ function makeTool(id: ToolId): THREE.Group {
   const g = new THREE.Group();
   const grip = new THREE.Vector3(0, 0, 0.1);
   const black = std(0x1f2420, { roughness: 0.5 });
-  const steel = std(0xc9ced2, { metalness: 0.85, roughness: 0.25 });
-  const yellow = std(0xf2c230, { roughness: 0.45 });
+  const steel = std(0xd8dde2, { metalness: 0.9, roughness: 0.18 });
+  const yellow = std(0xf2c230, { roughness: 0.4 });
 
   switch (id) {
     case "voltageTester": {
@@ -384,15 +799,34 @@ function makeTool(id: ToolId): THREE.Group {
       break;
     }
     case "utilityKnife": {
-      const blade = box(0.003, 0.018, 0.03, steel);
-      blade.position.z = 0.015;
-      blade.rotation.x = 0.5;
-      const body = box(0.022, 0.03, 0.13, yellow);
-      body.position.z = 0.095;
-      const grip2 = box(0.024, 0.032, 0.06, black);
-      grip2.position.z = 0.12;
-      g.add(blade, body, grip2);
-      grip.set(0, 0, 0.12);
+      // Pro 30° Snap-Off Precision Utility Knife with segmented steel blade
+      const bladeGroup = new THREE.Group();
+      const bladeStrip = box(0.0016, 0.014, 0.048, steel);
+      bladeStrip.position.set(0, 0.002, 0.024);
+      bladeGroup.add(bladeStrip);
+      // 30° bevelled razor tip at [0,0,0]
+      const bevelTip = new THREE.Mesh(new THREE.ConeGeometry(0.008, 0.018, 4), steel);
+      bevelTip.rotation.x = -Math.PI / 2;
+      bevelTip.rotation.z = Math.PI / 4;
+      bevelTip.scale.set(0.2, 1, 1);
+      bevelTip.position.set(0, 0, 0.006);
+      bladeGroup.add(bevelTip);
+      // Snap-off segment lines
+      for (let s = 1; s <= 4; s += 1) {
+        const segLine = box(0.002, 0.0145, 0.0008, black);
+        segLine.position.set(0, 0.002, s * 0.009);
+        bladeGroup.add(segLine);
+      }
+      const guideChannel = box(0.008, 0.019, 0.05, steel);
+      guideChannel.position.set(0, 0.002, 0.062);
+      const body = box(0.022, 0.032, 0.145, yellow);
+      body.position.set(0, 0, 0.115);
+      const overmold = box(0.024, 0.026, 0.095, black);
+      overmold.position.set(0, -0.003, 0.125);
+      const sliderLock = box(0.026, 0.014, 0.022, std(0xe03a2a));
+      sliderLock.position.set(0, 0.014, 0.088);
+      g.add(bladeGroup, guideChannel, body, overmold, sliderLock);
+      grip.set(0, 0, 0.125);
       break;
     }
     case "stirStick": {
@@ -453,14 +887,20 @@ function makeTool(id: ToolId): THREE.Group {
 }
 
 // ---------------------------------------------------------------------------
-// Drop rig
+// Drop rig (with live progressive Top & Bottom Cut Flaps + Floor Offcut Strip)
 // ---------------------------------------------------------------------------
 
 interface DropRig {
   group: THREE.Group;
   mat: THREE.MeshStandardMaterial;
   clip: THREE.Plane;
-  flap: THREE.Mesh;
+  topFlapUncut: THREE.Mesh;
+  topFlapCut: THREE.Mesh;
+  botFlapUncut: THREE.Mesh;
+  botFlapCut: THREE.Mesh;
+  floorOffcut: THREE.Mesh;
+  topKerfLine: THREE.Mesh;
+  botKerfLine: THREE.Mesh;
   flapMat: THREE.MeshStandardMaterial;
   bubbles: THREE.Mesh[];
   smears: THREE.Mesh[];
@@ -486,12 +926,14 @@ export class TaskSimulatorScene {
   private showPath = true;
   private snapNext = true;
   private lastStepIdx: number | null = null;
+  private surfaceMode: SimulatorSurfaceMode = "botanical";
 
   private right: HandRig;
   private left: HandRig;
+  private human: HumanInstallerRig;
   private toolCache = new Map<ToolId, THREE.Group>();
   private activeTool: THREE.Group | null = null;
-  private straightedge: THREE.Mesh;
+  private straightedge: THREE.Group;
   private plate: THREE.Group;
   private dropCloth: THREE.Mesh;
 
@@ -510,7 +952,10 @@ export class TaskSimulatorScene {
   private drops: DropRig[] = [];
   private opening: THREE.Mesh;
   private xCuts: THREE.Mesh[] = [];
+  private outletFlaps: THREE.Group[] = [];
   private sheetOnTable: THREE.Mesh;
+  private tableCutKerf: THREE.Mesh;
+  private tableOffcutStrip: THREE.Mesh;
   private stack: THREE.Mesh;
   private mist: THREE.Points;
   private pathLines: THREE.LineSegments;
@@ -556,9 +1001,23 @@ export class TaskSimulatorScene {
 
     this.right = new HandRig(1, this.scene);
     this.left = new HandRig(-1, this.scene);
+    this.human = new HumanInstallerRig(this.scene);
 
-    // Secondary props
-    this.straightedge = box(0.7, 0.06, 0.004, std(0xc9ced2, { metalness: 0.85, roughness: 0.25 }));
+    // Secondary props: Pro 600mm Graduated Stainless-Steel Straightedge with Finger-Guard Rib
+    this.straightedge = new THREE.Group();
+    const ruleMat = new THREE.MeshStandardMaterial({
+      map: rulerTexture(),
+      metalness: 0.78,
+      roughness: 0.24,
+    });
+    const ruleBlade = box(0.56, 0.056, 0.004, ruleMat);
+    const guardRib = box(0.52, 0.016, 0.016, std(0x232a26, { metalness: 0.4, roughness: 0.4 }));
+    guardRib.position.set(0, 0, 0.009);
+    const capL = box(0.018, 0.058, 0.012, std(ACID, { roughness: 0.35 }));
+    capL.position.set(-0.275, 0, 0.004);
+    const capR = box(0.018, 0.058, 0.012, std(ACID, { roughness: 0.35 }));
+    capR.position.set(0.275, 0, 0.004);
+    this.straightedge.add(ruleBlade, guardRib, capL, capR);
     this.straightedge.visible = false;
     this.scene.add(this.straightedge);
 
@@ -645,8 +1104,9 @@ export class TaskSimulatorScene {
     this.tapeBlade = new THREE.Mesh(new THREE.BoxGeometry(0.019, 1, 0.0015), std(0xf6d64a, { metalness: 0.4, roughness: 0.35 }));
     this.scene.add(this.tapeCase, this.tapeBlade);
 
-    // Drops ---------------------------------------------------------------------
-    const tex = wallpaperTexture();
+    // Drops + Real Human Cut Flaps & Kerf Lines ------------------------------
+    const tex = wallpaperTexture(this.surfaceMode);
+    const kerfMat = new THREE.MeshBasicMaterial({ color: 0x141614 });
     for (let i = 0; i < DROP_COUNT; i += 1) {
       const r = dropRect(i);
       const width = r.x1 - r.x0;
@@ -663,8 +1123,24 @@ export class TaskSimulatorScene {
       group.add(mesh);
 
       const flapMat = new THREE.MeshStandardMaterial({ map: t, roughness: 0.82, transparent: true, side: THREE.DoubleSide });
-      const flap = new THREE.Mesh(new THREE.PlaneGeometry(width, 0.06), flapMat);
-      this.scene.add(flap);
+      // Top ceiling excess flaps (uncut right side + peeling cut left side)
+      const topFlapUncut = anchoredPlane(width, 0.048, flapMat, "right");
+      const topFlapCut = anchoredPlane(width, 0.048, flapMat, "left");
+      // Bottom baseboard excess flaps (uncut right side + peeling cut left side)
+      const botFlapUncut = anchoredPlane(width, 0.065, flapMat, "right");
+      const botFlapCut = anchoredPlane(width, 0.065, flapMat, "left");
+      // Severed offcut strip lying on the drop cloth after cut completes
+      const floorOffcut = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.92, 0.055), flapMat);
+      floorOffcut.rotation.x = -Math.PI / 2 + 0.08;
+      floorOffcut.rotation.z = (i % 2 === 0 ? 1 : -1) * 0.06;
+      floorOffcut.position.set((r.x0 + r.x1) / 2, 0.008, 0.16 + (i % 3) * 0.05);
+
+      const topKerfLine = anchoredPlane(width, 0.0035, kerfMat, "left");
+      topKerfLine.position.set(r.x0, WALL.height - 0.003, 0.0082);
+      const botKerfLine = anchoredPlane(width, 0.0035, kerfMat, "left");
+      botKerfLine.position.set(r.x0, WALL.baseboard + 0.003, 0.0082);
+
+      this.scene.add(topFlapUncut, topFlapCut, botFlapUncut, botFlapCut, floorOffcut, topKerfLine, botKerfLine);
 
       const bubbles: THREE.Mesh[] = [];
       const br = rng(100 + i);
@@ -689,29 +1165,87 @@ export class TaskSimulatorScene {
       const paste = anchoredPlane(pr.x1 - pr.x0, fullH - 0.04, pasteMat, "left");
       paste.position.set(pr.x0, midY, 0.004 + i * 0.0001);
       this.scene.add(group, paste);
-      this.drops.push({ group, mat, clip, flap, flapMat, bubbles, smears, paste, pasteMat });
+      this.drops.push({
+        group,
+        mat,
+        clip,
+        topFlapUncut,
+        topFlapCut,
+        botFlapUncut,
+        botFlapCut,
+        floorOffcut,
+        topKerfLine,
+        botKerfLine,
+        flapMat,
+        bubbles,
+        smears,
+        paste,
+        pasteMat,
+      });
     }
 
-    this.opening = new THREE.Mesh(new THREE.PlaneGeometry(OUTLET.w, OUTLET.h), new THREE.MeshStandardMaterial({ color: 0x3b3a36, roughness: 0.9 }));
+    // Outlet recess + Diagonal X-Cut lines + 4 Hinged Triangular Relief Flaps
+    this.opening = new THREE.Mesh(new THREE.PlaneGeometry(OUTLET.w, OUTLET.h), new THREE.MeshStandardMaterial({ color: 0x262522, roughness: 0.9 }));
     this.opening.position.set(OUTLET.x, OUTLET.y, 0.0078);
     this.scene.add(this.opening);
     const diag = Math.hypot(OUTLET.w, OUTLET.h);
     const ang = Math.atan2(OUTLET.h, OUTLET.w);
     [ang, -ang].forEach((a) => {
-      const line = new THREE.Mesh(new THREE.PlaneGeometry(diag, 0.0018), new THREE.MeshBasicMaterial({ color: 0x2a2a2a }));
-      line.position.set(OUTLET.x, OUTLET.y, 0.0079);
+      const line = new THREE.Mesh(new THREE.PlaneGeometry(diag, 0.0024), new THREE.MeshBasicMaterial({ color: 0x1a1a1a }));
+      line.position.set(OUTLET.x, OUTLET.y, 0.0085);
       line.rotation.z = a;
       this.xCuts.push(line);
       this.scene.add(line);
     });
 
-    // Table items
+    // 4 Triangular flaps hinged along the top, bottom, left, right edges of the outlet box
+    const hw = OUTLET.w / 2;
+    const hh = OUTLET.h / 2;
+    const flapDefs: { hinge: [number, number]; verts: [number, number][]; axis: "x" | "y"; dir: 1 | -1 }[] = [
+      { hinge: [OUTLET.x, OUTLET.y + hh], verts: [[-hw, 0], [hw, 0], [0, -hh]], axis: "x", dir: -1 },
+      { hinge: [OUTLET.x, OUTLET.y - hh], verts: [[-hw, 0], [hw, 0], [0, hh]], axis: "x", dir: 1 },
+      { hinge: [OUTLET.x - hw, OUTLET.y], verts: [[0, -hh], [0, hh], [hw, 0]], axis: "y", dir: -1 },
+      { hinge: [OUTLET.x + hw, OUTLET.y], verts: [[0, -hh], [0, hh], [-hw, 0]], axis: "y", dir: 1 },
+    ];
+    const triFlapMat = std(0xece6d5, { roughness: 0.8, side: THREE.DoubleSide });
+    flapDefs.forEach((d) => {
+      const shape = new THREE.Shape();
+      shape.moveTo(d.verts[0][0], d.verts[0][1]);
+      shape.lineTo(d.verts[1][0], d.verts[1][1]);
+      shape.lineTo(d.verts[2][0], d.verts[2][1]);
+      shape.closePath();
+      const mesh = new THREE.Mesh(new THREE.ShapeGeometry(shape), triFlapMat);
+      const pivot = new THREE.Group();
+      pivot.position.set(d.hinge[0], d.hinge[1], 0.0082);
+      pivot.userData = { axis: d.axis, dir: d.dir };
+      pivot.add(mesh);
+      pivot.visible = false;
+      this.outletFlaps.push(pivot);
+      this.scene.add(pivot);
+    });
+
+    // Table items + Table Cutting Kerf & Peeling Offcut Strip
     this.sheetOnTable = new THREE.Mesh(new THREE.PlaneGeometry(0.95, DROP_WIDTH), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 }));
     this.sheetOnTable.rotation.x = -Math.PI / 2;
     this.sheetOnTable.rotation.z = Math.PI / 2;
     this.sheetOnTable.position.set(1.45, TABLE.y + 0.002, (TABLE.z0 + TABLE.z1) / 2);
+
+    this.tableCutKerf = anchoredPlane(DROP_WIDTH, 0.0035, kerfMat, "left");
+    this.tableCutKerf.rotation.x = -Math.PI / 2;
+    this.tableCutKerf.rotation.z = -Math.PI / 2;
+    this.tableCutKerf.position.set(1.73, TABLE.y + 0.0035, TABLE.z0 + 0.05);
+    this.tableCutKerf.visible = false;
+
+    this.tableOffcutStrip = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.08, DROP_WIDTH),
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85, side: THREE.DoubleSide }),
+    );
+    this.tableOffcutStrip.rotation.x = -Math.PI / 2;
+    this.tableOffcutStrip.position.set(1.78, TABLE.y + 0.004, (TABLE.z0 + TABLE.z1) / 2);
+    this.tableOffcutStrip.visible = false;
+
     this.stack = box(0.52, 1, 0.5, std(0xe5dfcd, { roughness: 0.9 }));
-    this.scene.add(this.sheetOnTable, this.stack);
+    this.scene.add(this.sheetOnTable, this.tableCutKerf, this.tableOffcutStrip, this.stack);
 
     this.dropCloth = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), std(0xd9cfb8, { roughness: 1, side: THREE.DoubleSide }));
     this.dropCloth.rotation.x = -Math.PI / 2;
@@ -810,7 +1344,6 @@ export class TaskSimulatorScene {
       const roll = cyl(0.05, 0.05, DROP_WIDTH, std(i === 0 ? 0xe9e2cf : 0xe3dcc8, { roughness: 0.85 }));
       roll.rotation.x = Math.PI / 2;
       roll.position.set(x, TABLE.y + 0.05, (TABLE.z0 + TABLE.z1) / 2);
-      if (i > 0) roll.position.z += 0.0;
       this.scene.add(roll);
     });
 
@@ -898,6 +1431,31 @@ export class TaskSimulatorScene {
     this.axes.visible = on;
   }
 
+  setSurfaceMode(mode: SimulatorSurfaceMode) {
+    this.surfaceMode = mode;
+    const fullH = WALL.height - WALL.baseboard;
+    const baseTex = wallpaperTexture(mode);
+    const rough = mode === "eclipse-sheet" ? 0.14 : mode === "marble-roll" ? 0.32 : mode === "wpc-choco" ? 0.55 : 0.82;
+    this.drops.forEach((rig, i) => {
+      const r = dropRect(i);
+      const width = r.x1 - r.x0;
+      const t = baseTex.clone();
+      t.needsUpdate = true;
+      t.repeat.set(width / DROP_WIDTH, fullH / 0.64);
+      rig.mat.map = t;
+      rig.mat.roughness = rough;
+      rig.mat.needsUpdate = true;
+      rig.flapMat.map = t;
+      rig.flapMat.roughness = rough;
+      rig.flapMat.needsUpdate = true;
+    });
+    const sheetMat = this.sheetOnTable.material as THREE.MeshStandardMaterial;
+    sheetMat.map = baseTex;
+    sheetMat.roughness = rough;
+    sheetMat.needsUpdate = true;
+    this.renderer.render(this.scene, this.camera);
+  }
+
   snapshot(): string {
     this.renderer.render(this.scene, this.camera);
     return this.renderer.domElement.toDataURL("image/png");
@@ -914,22 +1472,26 @@ export class TaskSimulatorScene {
   setFrame(stepIdx: number, progress: number) {
     const step = WALLPAPER_TASK[stepIdx];
     const stepChanged = stepIdx !== this.stepIdx;
+    const progressJump = Math.abs(progress - this.progress) > 0.2;
     this.stepIdx = stepIdx;
     this.progress = progress;
     if (stepChanged) {
       this.buildPathOverlay(step);
       this.updateCameraGoal(step);
-      const far = this.camera.position.distanceTo(this.camGoalPos) > 1.2;
-      if (this.autoCam && (this.snapNext || (far && Math.abs(stepIdx - (this.lastStepIdx ?? stepIdx)) > 1))) {
+    }
+    this.applyWallState();
+    this.placeActors(step, progress);
+    if (this.autoCam && (this.snapNext || stepChanged || progressJump)) {
+      const far = this.camera.position.distanceTo(this.camGoalPos) > 0.6;
+      if (this.snapNext || far) {
         this.camera.position.copy(this.camGoalPos);
         this.controls.target.copy(this.camGoalTarget);
         this.controls.update();
       }
-      this.snapNext = false;
-      this.lastStepIdx = stepIdx;
     }
-    this.applyWallState();
-    this.placeActors(step, progress);
+    this.snapNext = false;
+    this.lastStepIdx = stepIdx;
+    this.renderer.render(this.scene, this.camera);
   }
 
   // -------------------------------------------------------------------------
@@ -1009,7 +1571,7 @@ export class TaskSimulatorScene {
     this.primerFill.scale.x = Math.max(0.001, roll);
     (this.primerFill.material as THREE.MeshStandardMaterial).roughness = 0.4 + 0.5 * d("prime-cure");
 
-    // Layout
+    // Layout & Table Cutting
     const plumb = d("layout-plumb");
     const laserOn = plumb > 0 && d("trim-drop-1") < 1;
     this.laserLine.visible = laserOn;
@@ -1018,7 +1580,17 @@ export class TaskSimulatorScene {
     this.pencilLine.scale.y = Math.max(0.001, plumb);
 
     const cut = d("layout-cut");
-    this.sheetOnTable.visible = cut > 0 && cut < 1;
+    const onTableCut = cut > 0 && cut < 1;
+    this.sheetOnTable.visible = onTableCut;
+    this.tableCutKerf.visible = onTableCut;
+    this.tableOffcutStrip.visible = onTableCut;
+    if (onTableCut) {
+      const passFrac = (cut * 3) % 1;
+      this.tableCutKerf.scale.x = Math.max(0.01, clamp01((passFrac - 0.1) / 0.75));
+      this.tableOffcutStrip.position.x = 1.77 + Math.max(0, passFrac - 0.5) * 0.06;
+      this.tableOffcutStrip.rotation.y = Math.max(0, passFrac - 0.3) * 0.35;
+    }
+
     let hungCount = 0;
     for (let i = 0; i < DROP_COUNT; i += 1) if (this.dropPhases(i).hang > 0) hungCount += 1;
     const remaining = cut <= 0 ? 0 : Math.max(0, Math.round(DROP_COUNT * Math.min(1, cut * 1.05)) - hungCount);
@@ -1033,7 +1605,7 @@ export class TaskSimulatorScene {
     this.dropCloth.scale.set(clothW, 0.95, 1);
     this.dropCloth.position.set(WALL.x1 - clothW / 2, 0.003, 0.03 + 0.95 / 2);
 
-    // Drops
+    // Drops + Progressive Real Human Cut Flaps (Ceiling + Baseboard + Floor Offcuts)
     this.drops.forEach((rig, i) => {
       const ph = this.dropPhases(i);
       rig.paste.visible = ph.paste > 0.001 && ph.hang < 1;
@@ -1043,7 +1615,13 @@ export class TaskSimulatorScene {
       const visible = ph.hang > 0;
       rig.group.visible = visible;
       if (!visible) {
-        rig.flap.visible = false;
+        rig.topFlapUncut.visible = false;
+        rig.topFlapCut.visible = false;
+        rig.botFlapUncut.visible = false;
+        rig.botFlapCut.visible = false;
+        rig.floorOffcut.visible = false;
+        rig.topKerfLine.visible = false;
+        rig.botKerfLine.visible = false;
         return;
       }
       const pose = dropHangPose(i, ph.hang);
@@ -1062,24 +1640,61 @@ export class TaskSimulatorScene {
         (s.material as THREE.MeshStandardMaterial).opacity = settled ? 0.4 * (1 - ph.clean) : 0;
       });
 
-      // Bottom trim flap (excess over the baseboard)
       const r = dropRect(i);
-      const fall = clamp01((ph.trim - 0.55) / 0.45);
-      rig.flap.visible = settled && ph.trim < 1;
-      rig.flap.position.set((r.x0 + r.x1) / 2, 0.07 - fall * 0.07, 0.02 + fall * 0.12);
-      rig.flap.rotation.x = fall * 1.3;
-      rig.flapMat.opacity = 1 - fall;
+      // Top ceiling cut runs during ph.trim ∈ [0.05, 0.45]
+      const topCutFrac = clamp01((ph.trim - 0.05) / 0.38);
+      const topFall = clamp01((ph.trim - 0.4) / 0.14);
+      rig.topFlapUncut.visible = settled && topCutFrac < 0.995;
+      rig.topFlapUncut.position.set(r.x1, WALL.height - 0.024, 0.009);
+      rig.topFlapUncut.scale.x = Math.max(0.001, 1 - topCutFrac);
+
+      rig.topFlapCut.visible = settled && topCutFrac > 0.01 && topFall < 1;
+      rig.topFlapCut.position.set(r.x0, WALL.height - 0.024 - topFall * 0.45, 0.014 + topFall * 0.14);
+      rig.topFlapCut.scale.x = Math.max(0.001, topCutFrac);
+      rig.topFlapCut.rotation.x = 0.55 + topCutFrac * 0.55 + topFall * 1.4;
+      rig.topKerfLine.visible = settled && ph.trim > 0.04 && ph.trim < 0.95;
+      rig.topKerfLine.scale.x = Math.max(0.001, topCutFrac);
+
+      // Bottom baseboard cut runs during ph.trim ∈ [0.52, 0.92]
+      const botCutFrac = clamp01((ph.trim - 0.52) / 0.36);
+      const botFall = clamp01((ph.trim - 0.85) / 0.15);
+      rig.botFlapUncut.visible = settled && botCutFrac < 0.995;
+      rig.botFlapUncut.position.set(r.x1, 0.072, 0.019);
+      rig.botFlapUncut.scale.x = Math.max(0.001, 1 - botCutFrac);
+
+      rig.botFlapCut.visible = settled && botCutFrac > 0.01 && botFall < 1;
+      rig.botFlapCut.position.set(r.x0, 0.072 - botFall * 0.06, 0.024 + botFall * 0.1);
+      rig.botFlapCut.scale.x = Math.max(0.001, botCutFrac);
+      rig.botFlapCut.rotation.x = 0.45 + botCutFrac * 0.65 + botFall * 0.9;
+      rig.botKerfLine.visible = settled && ph.trim > 0.5;
+      rig.botKerfLine.scale.x = Math.max(0.001, botCutFrac);
+
+      rig.flapMat.opacity = 1;
+      // Once trimmed, show the severed paper strip resting on the drop cloth!
+      rig.floorOffcut.visible = settled && ph.trim >= 0.88 && d("finish-inspect") < 0.5;
     });
 
-    // Outlet + relief cut
+    // Outlet + Diagonal X-Relief Cut + 4 Folding Triangular Flaps
     const relief = this.dropPhases(2).relief;
     const dropOverOutlet = this.dropPhases(2).hang >= 0.999;
     this.xCuts.forEach((l, k) => {
-      const seg = clamp01(relief * 2.2 - k * 0.45);
-      l.visible = dropOverOutlet && seg > 0 && relief < 0.85;
+      const seg = clamp01(relief * 2.4 - k * 0.45);
+      l.visible = dropOverOutlet && seg > 0 && relief < 0.92;
       l.scale.x = Math.max(0.001, seg);
     });
-    this.opening.visible = dropOverOutlet && relief >= 0.85;
+    this.outletFlaps.forEach((pivot, k) => {
+      const openAmt = clamp01((relief - 0.15 - k * 0.06) / 0.45);
+      const trimOff = clamp01((relief - 0.58 - k * 0.08) / 0.25);
+      pivot.visible = dropOverOutlet && openAmt > 0.01 && trimOff < 1;
+      const angle = openAmt * 1.15 * (pivot.userData.dir as number);
+      if (pivot.userData.axis === "x") {
+        pivot.rotation.set(angle, 0, 0);
+      } else {
+        pivot.rotation.set(0, angle, 0);
+      }
+      pivot.scale.setScalar(Math.max(0.01, 1 - trimOff * 0.7));
+    });
+    this.opening.visible = dropOverOutlet && relief >= 0.22;
 
     this.placePlate();
 
@@ -1135,7 +1750,8 @@ export class TaskSimulatorScene {
     const e = new THREE.Euler(0, 0, 0);
     switch (step.primitive) {
       case "cutOnTable":
-        e.set(-Math.PI / 2 + 0.35, 0, 0);
+        // Angled 30° utility knife slicing along the straightedge on the worktable
+        e.set(-Math.PI / 2 + 0.48, 0.12, 0);
         break;
       case "stir":
         e.set(-Math.PI / 2, 0, 0);
@@ -1148,8 +1764,11 @@ export class TaskSimulatorScene {
         e.set(0.12, -0.1, 0);
         break;
       case "trim":
+        // Low 30° slicing angle drawing left-to-right along the stainless straightedge
+        e.set(0.22, -0.72, -0.18);
+        break;
       case "reliefCut":
-        e.set(0.25, -0.6, 0);
+        e.set(0.28, -0.52, -0.25);
         break;
       case "markLine":
         e.set(0.5, 0, 0);
@@ -1161,7 +1780,6 @@ export class TaskSimulatorScene {
         break;
       case "inspect": {
         const target = new THREE.Vector3(step.region.x1 + 0.5, tip.y, 0);
-        // Lens faces local −z, so build a basis whose +z points away from the target.
         const m = new THREE.Matrix4().lookAt(tip, target, new THREE.Vector3(0, 1, 0));
         q.setFromRotationMatrix(m);
         break;
@@ -1182,21 +1800,23 @@ export class TaskSimulatorScene {
     this.right.setGlove(gloves);
     this.left.setGlove(gloves);
     this.right.setVisible(true);
+    let wristR = tip.clone();
     if (step.tool === "hands") {
       const flat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.05, 0, 0));
-      this.right.place(tip.clone().add(new THREE.Vector3(0, 0, 0.016)), flat);
-      this.right.setCurl(0.12);
+      wristR = this.right.place(tip.clone().add(new THREE.Vector3(0, 0, 0.016)), flat);
+      this.right.setCurl(0.12, 0.4);
     } else if (step.tool === "clock") {
-      this.right.place(new THREE.Vector3(0.55, 1.0, 0.85), new THREE.Quaternion().setFromEuler(new THREE.Euler(0.6, 0, -0.3)));
+      wristR = this.right.place(new THREE.Vector3(0.55, 1.0, 0.85), new THREE.Quaternion().setFromEuler(new THREE.Euler(0.6, 0, -0.3)));
       this.right.setCurl(0.4);
     } else if (this.activeTool) {
       const grip = (this.activeTool.userData.grip as THREE.Vector3).clone().applyMatrix4(this.activeTool.matrixWorld);
-      this.right.place(grip, q);
-      this.right.setCurl(step.tool === "sponge" || step.tool === "microfiber" || step.tool === "sandingBlock" ? 0.55 : 0.95);
+      wristR = this.right.place(grip, q);
+      this.right.setCurl(step.tool === "sponge" || step.tool === "microfiber" || step.tool === "sandingBlock" ? 0.55 : 0.92);
     }
 
     // Left hand / secondary prop
     this.straightedge.visible = false;
+    let wristL = tip.clone().add(new THREE.Vector3(-0.35, -0.2, 0.3));
     if (s.secondary) {
       const sp = new THREE.Vector3(...s.secondary.p);
       if (step.secondaryTool === "straightedge") {
@@ -1204,24 +1824,51 @@ export class TaskSimulatorScene {
         this.straightedge.position.copy(sp);
         if (step.primitive === "cutOnTable") {
           this.straightedge.rotation.set(-Math.PI / 2, 0, Math.PI / 2);
-          this.left.place(sp.clone().add(new THREE.Vector3(0, 0.02, -0.15)), new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0)));
+          wristL = this.left.place(
+            sp.clone().add(new THREE.Vector3(-0.02, 0.024, -0.08)),
+            new THREE.Quaternion().setFromEuler(new THREE.Euler(-Math.PI / 2 + 0.15, 0, Math.PI / 2 - 0.2)),
+          );
         } else {
           this.straightedge.rotation.set(0, 0, 0);
-          this.left.place(sp.clone().add(new THREE.Vector3(-0.12, 0.0, 0.02)), new THREE.Quaternion());
+          // Pin the straightedge firmly against the wall with splayed fingers well clear of the blade edge
+          const isTop = sp.y > 1.2;
+          wristL = this.left.place(
+            sp.clone().add(new THREE.Vector3(-0.11, isTop ? -0.048 : 0.048, 0.024)),
+            new THREE.Quaternion().setFromEuler(new THREE.Euler(0.12, 0, -0.15)),
+          );
         }
-        this.left.setCurl(0.15);
+        // Splay fingers flat across the straightedge guard rail!
+        this.left.setCurl(0.14, 0.85);
       } else {
-        this.left.place(sp.clone().add(new THREE.Vector3(0, 0, 0.016)), new THREE.Quaternion().setFromEuler(new THREE.Euler(step.primitive === "lay" ? -1.2 : 0.05, 0, 0)));
+        wristL = this.left.place(
+          sp.clone().add(new THREE.Vector3(0, 0, 0.016)),
+          new THREE.Quaternion().setFromEuler(new THREE.Euler(step.primitive === "lay" ? -1.2 : 0.05, 0, 0)),
+        );
         this.left.setCurl(step.secondaryTool === "plate" ? 0.3 : 0.12);
       }
       this.left.setVisible(true);
+    } else if (step.primitive === "reliefCut") {
+      // During outlet X-cut, left hand steadies the wallpaper just to the left of the outlet box
+      wristL = this.left.place(
+        new THREE.Vector3(OUTLET.x - 0.13, OUTLET.y + 0.01, 0.022),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(0.08, 0, -0.2)),
+      );
+      this.left.setCurl(0.12, 0.7);
+      this.left.setVisible(true);
     } else {
-      // Idle support hand, resting low and to the left of the work
-      const idle = new THREE.Vector3(Math.max(-1.9, tip.x - 0.42), Math.max(0.75, Math.min(1.25, tip.y - 0.25)), Math.max(0.35, tip.z + 0.35));
-      this.left.place(idle, new THREE.Quaternion().setFromEuler(new THREE.Euler(0.9, 0.3, 0.4)));
-      this.left.setCurl(0.55);
+      // Support hand resting naturally on the wall or at waist level
+      const idle = new THREE.Vector3(
+        Math.max(WALL.x0 - 0.05, tip.x - 0.34),
+        Math.max(0.65, Math.min(1.45, tip.y - 0.18)),
+        Math.max(0.28, tip.z + 0.25),
+      );
+      wristL = this.left.place(idle, new THREE.Quaternion().setFromEuler(new THREE.Euler(0.65, 0.25, 0.3)));
+      this.left.setCurl(0.45);
       this.left.setVisible(true);
     }
+
+    // Update the full articulated 3D human worker (head, torso, IK arms, IK legs, boots, platform)
+    this.human.update(tip, wristR, wristL, step);
 
     // Tape blade
     if (step.primitive === "measure") {
@@ -1234,10 +1881,23 @@ export class TaskSimulatorScene {
 
     const follow = ["hangDrop", "trim", "smooth", "markLine", "measure", "pasteEdge", "seamRoll", "wipeSeam", "pasteBand", "cutIn"];
     if (this.autoCam && follow.includes(step.primitive)) {
-      const ty = Math.max(0.7, Math.min(WALL.height - 0.45, tip.y));
-      const tx = Math.max(WALL.x0 + 0.55, Math.min(WALL.x1 - 0.55, tip.x));
-      this.camGoalTarget.set(tx, ty, 0.05);
-      this.camGoalPos.set(tx + 0.35, ty + 0.2, 2.1);
+      if (step.primitive === "trim") {
+        // Close-up framing of the human installer's hands, straightedge, utility knife & peeling flap
+        const isCeiling = tip.y > 1.25;
+        const tx = Math.max(WALL.x0 + 0.32, Math.min(WALL.x1 - 0.32, tip.x));
+        if (isCeiling) {
+          this.camGoalTarget.set(tx - 0.08, WALL.height - 0.14, 0.06);
+          this.camGoalPos.set(tx + 0.56, WALL.height - 0.38, 1.38);
+        } else {
+          this.camGoalTarget.set(tx - 0.08, 0.24, 0.06);
+          this.camGoalPos.set(tx + 0.58, 0.58, 1.38);
+        }
+      } else {
+        const ty = Math.max(0.7, Math.min(WALL.height - 0.45, tip.y));
+        const tx = Math.max(WALL.x0 + 0.55, Math.min(WALL.x1 - 0.55, tip.x));
+        this.camGoalTarget.set(tx, ty, 0.05);
+        this.camGoalPos.set(tx + 0.42, Math.min(WALL.height - 0.25, ty + 0.2), 2.15);
+      }
     }
 
     this.marker.position.copy(tip);
@@ -1299,14 +1959,19 @@ export class TaskSimulatorScene {
       case "lay":
         return set([0.4, 2.1, 3.6], [0, 0.3, 0.5]);
       case "cutOnTable":
-        return set([0.7, 1.75, TABLE.z1 + 1.1], [1.45, 0.8, (TABLE.z0 + TABLE.z1) / 2]);
+        return set([1.02, 1.48, TABLE.z1 + 0.58], [1.72, TABLE.y + 0.06, (TABLE.z0 + TABLE.z1) / 2]);
       case "stir":
         return set([0.75, 1.15, 1.75], [PASTE_BUCKET[0], 0.2, PASTE_BUCKET[2]]);
       case "probe":
       case "unscrew":
       case "screw":
       case "reliefCut":
-        return set([OUTLET.x + 0.35, OUTLET.y + 0.45, 1.05], [OUTLET.x, OUTLET.y + 0.05, 0]);
+        return set([OUTLET.x + 0.42, OUTLET.y + 0.32, 0.92], [OUTLET.x - 0.04, OUTLET.y + 0.04, 0.02]);
+      case "trim": {
+        const r = dropRect(step.dropIndex ?? 0);
+        const cx = (r.x0 + r.x1) / 2;
+        return set([cx + 0.52, 0.42, 1.18], [cx - 0.05, 0.16, 0.04]);
+      }
       case "hangDrop": {
         const r = dropRect(step.dropIndex ?? 0);
         const cx = (r.x0 + r.x1) / 2;

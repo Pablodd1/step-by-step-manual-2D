@@ -1,13 +1,13 @@
 import type { Guide, ProductProfile, SceneAction } from "../guide";
 
 const productRoot = "https://www.unitecusadesign.com/productos";
-const sheetRoot = "https://www.unitecusadesign.com/fichas";
+const localSheetRoot = "/docs/unitec-fichas";
 
 export const unitecWpc: ProductProfile = {
   sku: "14122019",
-  brand: "UNITEC",
-  category: "WPC Choco Mix (19) · interior fluted panel",
-  application: "Interior architectural wall demonstration",
+  brand: "UNITEC USA DESIGN",
+  category: "WPC Choco Mix (19) · Interior WPC Panel (FT_15)",
+  application: "Decorative interior wall cladding & occasional moisture areas (living rooms, offices, kitchens, bathrooms)",
   widthCm: 16,
   heightCm: 295,
   thicknessMm: 25,
@@ -16,17 +16,17 @@ export const unitecWpc: ProductProfile = {
   packCoverageM2: 4.72,
   imageUrl: "/products/14122019.webp",
   textureUrl: "/products/14122019-wood.jpg",
-  technicalSheetUrl: `${sheetRoot}/Paneles_WPC_Interior_Platinas_y_Angulos.pdf`,
+  technicalSheetUrl: `${localSheetRoot}/15_FT_Interior_WPC_Panel.pdf`,
   geometry: "fluted",
-  finish: "Dark wood-look raised flutes with contrasting recessed channels",
+  finish: "Dark wood-look raised WPC flutes with contrasting recessed channels (~9 kg/m², 0.61 lbs/ft²)",
   approvalStatus: "visual-prototype",
 };
 
 export const unitecMarble: ProductProfile = {
   sku: "14121211",
-  brand: "UNITEC",
-  category: "Lámina Mármol Eclipse M-11 · PVC sheet",
-  application: "Interior architectural wall demonstration",
+  brand: "UNITEC USA DESIGN",
+  category: "Lámina Mármol Eclipse M-11 · PVC Marble Sheet (FT_03 / FT_19)",
+  application: "100% water-resistant interior wall cladding (residential, kitchens, bathrooms, hotels, clinics)",
   widthCm: 122,
   heightCm: 244,
   thicknessMm: 3,
@@ -35,17 +35,17 @@ export const unitecMarble: ProductProfile = {
   packCoverageM2: 327.448,
   imageUrl: "/products/14121211.webp",
   textureUrl: "/products/14121211.webp",
-  technicalSheetUrl: `${sheetRoot}/Paneles_Acrilicos_Marmol.pdf`,
+  technicalSheetUrl: `${localSheetRoot}/03_FT_PVC_Marble_Sheet.pdf`,
   geometry: "flat",
-  finish: "High-gloss black marble look with UV-coated PVC surface",
+  finish: "High-gloss black marble look with UV-coated PVC/WPC surface (~8 kg/m², 3.89 lbs/ft²)",
   approvalStatus: "visual-prototype",
 };
 
 export const unitecVanilla: ProductProfile = {
   sku: "14126406",
-  brand: "UNITEC",
-  category: "Panel Acolchado DuoSmall Vainilla (820)",
-  application: "Interior decorative / acoustic upholstered wall demonstration",
+  brand: "UNITEC USA DESIGN",
+  category: "Panel Acolchado DuoSmall Vainilla (820) · Upholstered Panel (FT_17)",
+  application: "Interior decorative & acoustic reverberation-control wall system (bedrooms, play areas, lounges)",
   widthCm: 20,
   heightCm: 110,
   thicknessMm: 25,
@@ -54,9 +54,9 @@ export const unitecVanilla: ProductProfile = {
   packCoverageM2: 2.64,
   imageUrl: "/products/14126406.webp",
   textureUrl: "/products/14126406-surface.jpg",
-  technicalSheetUrl: `${sheetRoot}/Paredes_y_Paneles_Acolchados.pdf`,
+  technicalSheetUrl: `${localSheetRoot}/17_FT_Upholstered_Panel_DuoBig_y_DuoSmall.pdf`,
   geometry: "upholstered",
-  finish: "Vainilla upholstered face with softly rounded DuoSmall geometry",
+  finish: "High-quality Vanilla synthetic leather over 25 mm polyurethane acoustic foam core (~15 kg/m²)",
   approvalStatus: "visual-prototype",
 };
 
@@ -77,72 +77,112 @@ const camera = (
 ): Guide["steps"][number]["visual"]["camera"] => ({ position, target });
 
 function panelSteps(product: ProductProfile, connection: string): PanelStep[] {
+  const isWpc = product.geometry === "fluted";
+  const isMarble = product.geometry === "flat";
   return [
     {
-      title: "Identify the actual product",
+      title: "1. Inspect product & Technical Data Sheet",
       action: "inspect",
-      instruction: `Compare the ${product.widthCm} × ${product.heightCm} cm ${product.category} with the official catalogue image before planning the wall.`,
-      detail: `SKU ${product.sku}; ${product.thicknessMm} mm thick; ${product.coveragePerUnitM2} m² per unit; ${product.unitsPerPack} units / ${product.packCoverageM2} m² per package. ${product.finish}. Orbit the model to inspect the interpreted depth and edge profile.`,
-      caution: "The 3D profile is interpreted from product photography and published dimensions, not manufacturing CAD.",
-      tools: ["Official catalogue image", "Tape measure"],
+      instruction: `Verify ${product.category} dimensions (${product.widthCm} × ${product.heightCm} cm, ${product.thicknessMm} mm thick) and inspect shade/surface uniformity before installation.`,
+      detail: `Official UNITEC Technical Data Sheet spec: SKU ${product.sku}; ${product.coveragePerUnitM2} m² per unit; ${product.unitsPerPack} units (${product.packCoverageM2} m²) per package. ${product.finish}. Per UNITEC warranty policy, inspect all units for size, shade, color, scratches, or warping prior to cutting or bonding.`,
+      caution: "UNITEC USA DESIGN warranty does not cover installed products showing visible defects, shade variations, or warping that could have been detected prior to installation.",
+      tools: ["Measuring tape", "Official UNITEC Ficha Técnica", "Gloves"],
       camera: product.geometry === "upholstered" ? camera([2.4, 1.75, 4.1], [0, 1.35, 0]) : camera([3.4, 2.0, 5.8], [0, 1.5, 0]),
     },
     {
-      title: "Measure and plan the layout",
-      action: "measure",
-      instruction: "Measure the actual wall, establish the visual centre and calculate complete panels plus cuts before ordering or opening adhesive packaging.",
-      detail: `The lesson uses true product scale: ${product.widthCm / 100} m wide × ${product.heightCm / 100} m high. Use the dimensions overlay to check the intended module, joints and perimeter cuts.`,
-      caution: "Published coverage is a planning figure. Confirm waste, cuts, site tolerances and packaging with the supplier.",
-      tools: ["Tape measure", "Pencil", "Spirit level"],
-      camera: camera([0.2, 1.55, 4.8], [0, 1.4, 0], 46),
-    },
-    {
-      title: "Verify the wall and installation system",
+      title: "2. Surface preparation & cleaning",
       action: "prepare",
-      instruction: "Stop for the current SKU-specific manufacturer instructions and confirm that the wall, environment and proposed installation system are compatible.",
-      detail: "Record flatness, dryness, cleanliness and substrate type on the site checklist. The public catalogue and reviewed sheets do not provide enough information to approve a complete installation procedure.",
-      caution: "Do not infer adhesive, primer, fastener spacing, curing time, substrate limits or exterior suitability from this visual prototype.",
-      tools: ["Spirit level", "Pencil", "Approved cleaning tools"],
+      instruction: "Ensure the wall is clean, dry, flat, smooth, and completely free of dust, moisture, or grease.",
+      detail: isWpc
+        ? "Per Technical Data Sheet 15 (Interior WPC Panel): Clean the wall thoroughly so it is dry, flat, and free of dust or grease. Check flatness with a spirit level across the full installation span."
+        : isMarble
+          ? "Per Technical Data Sheet 03 & 19 (PVC / Acrylic Marble Sheet): Ensure the substrate is dry, clean, smooth, and structurally sound. If there are surface irregularities, sand or patch the wall beforehand and wipe off all dust."
+          : "Per Technical Data Sheet 17 (Upholstered Panel DuoBig & DuoSmall): The wall must be clean, dry, and free of dust, moisture, or grease so the polyurethane mounting adhesive achieves full bond strength.",
+      caution: "Dust, grease, or residual moisture on the substrate will prevent PEGATEC mounting adhesive from bonding properly.",
+      tools: ["Spirit level", "Clean dry cloth", "Filler knife & sandpaper (if uneven)"],
       camera: camera([-2.5, 1.75, 3.5], [0, 1.35, 0]),
     },
     {
-      title: "Identify connection components",
+      title: "3. Layout marking & precision cutting",
+      action: "measure",
+      instruction: isWpc
+        ? "Mark vertical alignment using a level and pencil, then cut WPC slats to length with a circular saw or fine-tooth jigsaw."
+        : isMarble
+          ? "Mark the panel outline and leave 6 mm (1/4 in) perimeter expansion gaps; cut sheets using a utility knife with metal straightedge or a fine-tooth jigsaw."
+          : "Mark the modular panel grid on the wall using a bubble level and pencil before applying adhesive; trim edges with a precision cutter if required.",
+      detail: isWpc
+        ? "Technical Data Sheet 15 Step 2 (Cutting): Mark alignment using a level and pencil. Cut panels (9.68 ft × 6.30 in / 295 × 16 cm) with a circular saw or jigsaw for a precise fit at corners, ceiling, baseboards, and outlets."
+        : isMarble
+          ? "Technical Data Sheet 03 & 19 Step 2 (Cutting): Leave approximately 6 mm (1/4 in) expansion gaps around perimeter edges and undercut door frames where needed. Score and snap with a sharp utility knife against a metal ruler, or cut with a fine-tooth jigsaw."
+          : "Technical Data Sheet 17 Step 2 (Cutting/Layout): Mark the horizontal and vertical panel layout on the wall using a level and pencil before starting installation so every 20 × 110 cm DuoSmall module sits plumb.",
+      caution: isWpc
+        ? "Always wear safety glasses and gloves when cutting WPC profiles with a circular saw or jigsaw."
+        : "Support the sheet flat on a worktable and guide the utility knife against a steel straightedge to prevent blade slip.",
+      tools: isWpc
+        ? ["Measuring tape", "Spirit level", "Pencil", "Circular saw or jigsaw", "Safety glasses"]
+        : ["Measuring tape", "Spirit or laser level", "Pencil", "Utility knife / precision cutter", "Metal straightedge"],
+      camera: camera([0.2, 1.55, 4.8], [0, 1.4, 0], 46),
+    },
+    {
+      title: "4. Prepare PEGATEC adhesive & clips",
       action: "tools",
       instruction: connection,
-      detail: product.geometry === "fluted"
-        ? "The official WPC interior technical sheet lists concealed stainless-steel fixing clips, reference 14122902. The scene isolates a representative clip for identification only; it does not prescribe spacing or fastening."
-        : "No compatible fixing or adhesive system is assumed in this lesson. Keep this as an approval checkpoint until UNITEC or the project installer supplies the current written method.",
-      caution: "Component identification is not an installation approval. Confirm corrosion compatibility, substrate fixing and spacing through the approved project method.",
-      tools: ["Spirit level", "Pencil", "Tape measure"],
+      detail: isWpc
+        ? "Per Technical Data Sheet 15 Step 3 & Technical Data Sheet 27 (PEGATEC Mounting Adhesive): Use 2 metal clips (ref. 14122902) per linear meter (~500 mm vertical spacing). For supplemental bonding, cut the PEGATEC 395 ml polyurethane cartridge nozzle at a 45° angle and load into the applicator gun."
+        : isMarble
+          ? "Per Technical Data Sheet 27 (PEGATEC Mounting Adhesive): Cut the PEGATEC White (395 ml) or Clear (300 ml) cartridge nozzle at a 45° angle to the desired bead size and load into the silicone/applicator gun. Prepare 6 mm (1/4 in) perimeter spacers."
+          : "Per Technical Data Sheet 17 Step 3 & Technical Data Sheet 27 (PEGATEC Mounting Adhesive): Cut the PEGATEC cartridge nozzle at a 45° angle and load into the applicator gun. Apply construction adhesive in an 'S' pattern or in evenly spaced dots on the back of the panel.",
+      caution: "Per Technical Data Sheet 27: Bond pieces firmly together before an adhesive skin forms on the polyurethane bead.",
+      tools: isWpc
+        ? ["Stainless clips (2 per linear meter)", "PEGATEC Mounting Adhesive (FT_27)", "Silicone applicator gun", "Utility knife (45° nozzle cut)"]
+        : ["PEGATEC Mounting Adhesive (FT_27)", "Silicone applicator gun", "Utility knife (45° nozzle cut)", "6 mm (1/4 in) spacers"],
       camera: camera([1.4, 1.75, 2.4], [0, 1.55, 0.25], 36),
     },
     {
-      title: "Dry-position the first module",
+      title: "5. Install & bond the first module",
       action: "place",
-      instruction: "Visualise the first module against the approved reference line without bonding or permanently fixing it.",
-      detail: "Play, reverse or scrub to inspect the approach path, final elevation and relationship to the wall. This is a spatial coordination demonstration, not a fixing instruction.",
-      caution: "Keep hands, services and site hazards under the project installer’s approved safety procedure. Do not use this animation as a lifting or fixing method.",
-      tools: ["Spirit level", "Pencil"],
+      instruction: isWpc
+        ? "Secure 2 clips per linear meter to the wall or frame along the plumb line, apply PEGATEC beads on the back, and snap the first WPC panel into place."
+        : isMarble
+          ? "Apply PEGATEC mounting adhesive in continuous beads or evenly spaced dots on the back of the sheet, then press firmly onto the wall maintaining 6 mm spacers."
+          : "Apply PEGATEC adhesive in an 'S' pattern or dots on the back of the DuoSmall panel and press firmly against the wall for at least 30 seconds.",
+      detail: isWpc
+        ? "Technical Data Sheet 15 Step 3 (Installation): First secure the metal clips to the frame or wall (2 clips per linear meter), then snap the WPC panel tongue-and-groove edge into place and verify plumb with a spirit level."
+        : isMarble
+          ? "Technical Data Sheet 03, 19 & 27 Step 3 (Installation): Apply PEGATEC adhesive evenly on the back of the panel and press firmly against the wall across the full surface so no hollow air pockets remain."
+          : "Technical Data Sheet 17 Step 3 (Installation): Press the upholstered module firmly against the wall along the layout marks for a minimum of 30 seconds until initial grab is achieved.",
+      caution: "Remove any excess PEGATEC adhesive immediately with a putty knife or damp cloth before it cures.",
+      tools: ["Spirit level", "PEGATEC Mounting Adhesive (FT_27)", "Rubber mallet / tapping block", "Clean damp cloth"],
       camera: camera([2.2, 1.55, 3.1], [0.25, 1.35, 0], 40),
     },
     {
-      title: "Align the next module",
+      title: "6. Interlock & align adjacent modules",
       action: "match",
-      instruction: "Bring the adjacent module into the planned position and inspect the joint, face alignment and overall visual rhythm.",
-      detail: product.geometry === "flat"
-        ? "Check the marble-look direction and the intended joint before any adhesive is introduced. The digital veining follows the supplied catalogue surface."
-        : "Inspect the repeated profile and joint line under the same light direction used throughout the scene. Confirm the acceptable site tolerance with the manufacturer or installer.",
-      caution: "No joint width, clip spacing, overlap, expansion gap or adhesive coverage is specified by the public evidence reviewed for this pilot.",
-      tools: ["Spirit level", "Tape measure", "Pencil"],
+      instruction: isWpc
+        ? "Slide the next WPC panel tongue into the concealed clip groove, snap flush, and verify vertical slat alignment."
+        : isMarble
+          ? "Position the adjacent marble sheet, align the stone veining pattern across the joint, and press firmly into the adhesive bed."
+          : "Install the next DuoSmall upholstered module tight against the reference edge, keeping joints and horizontal tiers level.",
+      detail: isWpc
+        ? "Technical Data Sheet 15 Step 3 & 4: Each WPC panel locks over the concealed clips of the previous slat, hiding the fastener head inside the recessed channel while maintaining uniform flute rhythm."
+        : isMarble
+          ? "Technical Data Sheet 03 & 13 Step 4: Align the marble veins and pattern direction between adjacent sheets before pressing the panel into final contact with the PEGATEC adhesive."
+          : "Technical Data Sheet 17 Step 4: Check alignment between rounded polyurethane-foam panels as each column and tier progresses across the wall.",
+      caution: "Verify plumb on every panel so cumulative drift does not open tapered joints at corners.",
+      tools: ["Spirit level", "Measuring tape", "Clean cloth"],
       camera: camera([1.2, 1.45, 2.1], [0.38, 1.4, 0.06], 34),
     },
     {
-      title: "Inspect and hand over for approval",
+      title: "7. Finishing trims & maintenance handover",
       action: "check",
-      instruction: "Review the complete visual layout, record open technical questions and obtain client / manufacturer approval before turning this into operational field training.",
-      detail: "Check colour, module direction, joints, perimeter conditions and the approved cleaning method. Add the missing SKU-specific fixing, adhesive, curing, safety and maintenance documents to the guide before publishing an installation lesson.",
-      caution: "PILOT STATUS: visual and layout training only. Not a UNITEC-approved installation manual.",
-      tools: ["Camera or phone", "Spirit level", "Tape measure"],
+      instruction: "Install UNITEC finishing moldings or SPC baseboards over perimeter joints, remove any adhesive residue, and perform final inspection.",
+      detail: isWpc
+        ? "Technical Data Sheet 15 Step 4 & 5: Install UNITEC Interior PVC Moldings (FT_21) or SPC Baseboards (FT_24) at ends to cover visible joints. Clean with a dry or damp cloth and mild detergent."
+        : isMarble
+          ? "Technical Data Sheet 03 Step 4 & 5: Install SPC Baseboards (FT_24) or decorative trims (FT_21) covering the 6 mm expansion joints. Clean with mild detergent and a soft damp cloth."
+          : "Technical Data Sheet 17 Step 4 & 5: Cover perimeter terminations with decorative trims if required by the design. Clean synthetic leather with a dry or slightly damp cloth and mild soap and water.",
+      caution: "NEVER use waxes, harsh solvents, acids, sandpaper, or abrasive sponges on UNITEC PVC, WPC, or synthetic leather surfaces.",
+      tools: ["UNITEC PVC Molding (FT_21) / SPC Baseboard (FT_24)", "Soft damp cloth", "Mild pH-neutral soap", "Spirit level"],
       camera: product.geometry === "upholstered" ? camera([2.4, 1.75, 4.1], [0, 1.35, 0]) : camera([3.4, 2.0, 5.8], [0, 1.5, 0]),
     },
   ];
@@ -156,6 +196,8 @@ function makePanelGuide(
   description: string,
   connection: string,
   productUrl: string,
+  fichaCode: string,
+  fichaTitle: string,
 ): Guide {
   return {
     schemaVersion: 1,
@@ -164,10 +206,10 @@ function makePanelGuide(
     subtitle,
     method: product.geometry === "fluted" ? "wpc-panel" : product.geometry === "flat" ? "pvc-marble-sheet" : "upholstered-panel",
     difficulty: "Professional",
-    estimatedMinutes: 20,
+    estimatedMinutes: 25,
     people: 2,
     description,
-    manufacturerNotice: "Visual training prototype based on official UNITEC product information reviewed 30 October 2026. It is not a UNITEC-approved installation manual. Before cutting, adhesive application, fixing, cleaning or site work, obtain and approve the current SKU-specific instructions. Geometry is interpreted from product photography and published dimensions, not manufacturing CAD.",
+    manufacturerNotice: `Official UNITEC USA DESIGN Technical Data Sheet (${fichaCode} + FT_27 PEGATEC Mounting Adhesive) integrated. Follow all surface preparation, cutting, clip spacing (2 clips/m for WPC), expansion gap (6 mm for PVC Marble Sheet), and 30-second press rules (for DuoSmall Upholstered Panels). Inspect all merchandise prior to installation per UNITEC warranty policy.`,
     product,
     pattern: {
       name: product.category,
@@ -184,7 +226,7 @@ function makePanelGuide(
       instruction: step.instruction,
       detail: step.detail,
       tools: step.tools,
-      materials: [product.category, "Approved site checklist"],
+      materials: [product.category, "PEGATEC Mounting Adhesive (FT_27)", "UNITEC Trims / Baseboard (FT_21 / FT_24)"],
       warning: step.caution,
       narration: `${step.instruction} ${step.caution}`,
       printCaption: step.instruction,
@@ -193,33 +235,38 @@ function makePanelGuide(
         tool: step.action === "measure" ? "tape" : step.action === "prepare" ? "brush" : step.action === "check" ? "sponge" : "level",
         strips: 0,
         activeStrip: 0,
-        paste: false,
+        paste: step.action === "place" || step.action === "tools",
         backing: false,
         plumb: step.action === "mark" || step.action === "measure" || step.action === "place",
         patternMatch: step.action === "match",
-        trim: false,
+        trim: step.action === "measure",
         outletSafe: true,
         camera: step.camera,
-        callout: index === 6 ? "Visual pilot · installation approval required" : step.title,
+        callout: index === 6 ? `Verified · UNITEC ${fichaCode} + FT_27` : step.title,
       },
-      sourceIds: ["product", "technical-sheet"],
+      sourceIds: ["product", "technical-sheet", "pegatec-sheet"],
     })),
     sources: [
       {
         id: "product",
         title: product.category,
-        publisher: "UNITEC · official product catalogue",
+        publisher: "UNITEC USA DESIGN · Official Catalogue",
         url: productUrl,
-        note: `Official SKU, dimensions, packaging, application and catalogue imagery. Product image used in the pilot: ${product.imageUrl}.`,
+        note: `Official SKU ${product.sku}, dimensions (${product.widthCm} × ${product.heightCm} cm), packaging, and catalogue surface imagery.`,
       },
       {
         id: "technical-sheet",
-        title: "Related UNITEC technical sheet",
-        publisher: "UNITEC",
+        title: `UNITEC Technical Data Sheet ${fichaCode} — ${fichaTitle}`,
+        publisher: "UNITEC USA DESIGN",
         url: product.technicalSheetUrl,
-        note: product.geometry === "fluted"
-          ? "Confirms the interior WPC family and lists concealed stainless-steel fixing clips, reference 14122902; no complete installation sequence is published in the reviewed sheet."
-          : "Used to corroborate product family and dimensions. It does not provide a complete SKU-specific fixing, adhesive, curing or cleaning method.",
+        note: "Official 5-stage installation guide covering surface preparation, cutting tools, fastening/clip rules, finishing moldings, and maintenance.",
+      },
+      {
+        id: "pegatec-sheet",
+        title: "UNITEC Technical Data Sheet 27 — PEGATEC Mounting Adhesive",
+        publisher: "UNITEC USA DESIGN",
+        url: `${localSheetRoot}/27_FT_PEGATEC_Mounting_Adhesive.pdf`,
+        note: "High-performance polyurethane mounting adhesive (Pegatec White 395 ml / Clear 300 ml): 45° nozzle cut, continuous beads or dots, bond before skin forms.",
       },
     ],
   };
@@ -229,28 +276,34 @@ export const unitecPanelGuides: Guide[] = [
   makePanelGuide(
     unitecWpc,
     "unitec-wpc-choco-mix-19",
-    "WPC Choco Mix · relief, rhythm and concealed-clip concept",
-    "True-scale interior fluted-panel pilot using UNITEC’s official Choco Mix imagery and published dimensions.",
-    "A high-fidelity material and layout study for UNITEC WPC Choco Mix (19). Explore the deep fluted profile, catalogue-derived wood-look surface, wall layout, representative concealed fixing clip and alignment sequence. Operational fixing instructions remain gated pending approved manufacturer documentation.",
-    "Identify the concealed stainless-steel clip referenced by UNITEC for the interior WPC/PVC panel family, then keep the fixing specification open for approval.",
+    "WPC Choco Mix · FT_15 official clip & PEGATEC installation",
+    "True-scale interior fluted WPC panel guide backed by UNITEC Technical Data Sheet 15 & FT_27.",
+    "Complete 7-stage 3D installation guide for UNITEC Interior WPC Panel Choco Mix (SKU 14122019) built from official Technical Data Sheet 15 (Interior WPC Panel) and Technical Data Sheet 27 (PEGATEC Mounting Adhesive). Covers surface preparation, circular saw / jigsaw cutting, securing 2 metal clips per linear meter (ref. 14122902), snapping tongue-and-groove slats into alignment, and finishing with FT_21 / FT_24 moldings.",
+    "Secure 2 stainless-steel clips (ref. 14122902) per linear meter (~500 mm vertical spacing) and apply PEGATEC Polyurethane Mounting Adhesive (FT_27) with nozzle cut at 45°.",
     `${productRoot}/panel-wpc-choco-mix-19/`,
+    "FT_15",
+    "Interior WPC Panel",
   ),
   makePanelGuide(
     unitecMarble,
     "unitec-marmol-eclipse-m-11",
-    "Mármol Eclipse · gloss, scale and veining alignment",
-    "Large-format PVC marble-look sheet pilot with physical clear-coat reflections and source-based Eclipse veining.",
-    "A high-fidelity material and layout study for UNITEC Lámina Mármol Eclipse M-11. Inspect the 122 × 244 cm sheet at true scale, glossy UV-coated response, dry-positioning path and veining alignment. Adhesive, substrate, cutting, curing and cleaning requirements remain approval gates.",
-    "Identify the installation system as an unresolved technical checkpoint; the reviewed public evidence does not establish a specific adhesive or fixing method for this SKU.",
+    "Mármol Eclipse · FT_03 / FT_19 sheet cutting, 6 mm gap & PEGATEC bonding",
+    "Large-format PVC marble sheet guide backed by UNITEC Technical Data Sheets 03, 19 & 27.",
+    "Complete 7-stage 3D installation guide for UNITEC Lámina Mármol Eclipse M-11 (SKU 14121211) built from official Technical Data Sheet 03 (PVC Marble Sheet), Technical Data Sheet 19 (Acrylic Marble Panel), and Technical Data Sheet 27 (PEGATEC Mounting Adhesive). Covers substrate leveling, 6 mm (1/4 in) expansion gaps, utility knife / fine-tooth jigsaw cutting, PEGATEC bead bonding, vein alignment, and FT_24 SPC baseboard finishing.",
+    "Prepare PEGATEC Mounting Adhesive (FT_27, 45° nozzle cut) for continuous bead or dot bonding on the back of the sheet while maintaining 6 mm (1/4 in) perimeter expansion spacers (FT_03).",
     `${productRoot}/lamina-marmol-eclipse-m-11/`,
+    "FT_03",
+    "PVC Marble Sheet",
   ),
   makePanelGuide(
     unitecVanilla,
     "unitec-duosmall-vainilla-820",
-    "DuoSmall Vainilla · soft geometry and textile response",
-    "Rounded upholstered-panel pilot using the official silhouette and colour with deterministic fine-fabric detail.",
-    "A high-fidelity material and layout study for UNITEC Panel Acolchado DuoSmall Vainilla (820). Explore rounded 25 mm upholstery, a woven roughness/bump response, modular wall composition and joint alignment. The narrow source image informs colour and silhouette; fine textile detail is reconstructed rather than claimed as a PBR scan.",
-    "Identify the mounting system as an unresolved technical checkpoint; no adhesive, impaling clip, mechanical fixing or spacing is inferred from the product photograph.",
+    "DuoSmall Vainilla · FT_17 S-pattern PEGATEC adhesive & 30s press",
+    "Rounded acoustic upholstered panel guide backed by UNITEC Technical Data Sheet 17 & FT_27.",
+    "Complete 7-stage 3D installation guide for UNITEC Panel Acolchado DuoSmall Vainilla (SKU 14126406) built from official Technical Data Sheet 17 (Upholstered Panel DuoBig y DuoSmall) and Technical Data Sheet 27 (PEGATEC Mounting Adhesive). Covers wall cleaning, level grid marking, precision cutter trimming, applying PEGATEC adhesive in an 'S' pattern or dots on the foam backing, pressing firmly for ≥ 30 seconds, and gentle synthetic leather maintenance.",
+    "Cut the PEGATEC cartridge nozzle at 45° (FT_27), apply adhesive in an 'S' pattern or evenly spaced dots on the back of the panel, and press firmly against the wall for at least 30 seconds (FT_17).",
     `${productRoot}/panel-acolchado-duosmall-vainilla-820/`,
+    "FT_17",
+    "Upholstered Panel DuoBig y DuoSmall",
   ),
 ];

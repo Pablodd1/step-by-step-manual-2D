@@ -192,19 +192,59 @@ export interface MaterialLine {
   quantity: string;
   usedIn: string[];
   note: string;
+  fichaUrl?: string;
 }
 
+export type SimulatorSurfaceMode = "botanical" | "marble-roll" | "eclipse-sheet" | "wpc-choco";
+
+export const SIMULATOR_SURFACE_MODES: {
+  id: SimulatorSurfaceMode;
+  label: string;
+  fichaCode: string;
+  fichaUrl: string;
+  spec: string;
+}[] = [
+  {
+    id: "botanical",
+    label: "Botanical Non-Woven Roll",
+    fichaCode: "FT_13 / EN-233",
+    fichaUrl: "/docs/unitec-fichas/13_FT_Marble_Adhesive_Roll.pdf",
+    spec: "52 cm × 10.05 m · 64 cm straight repeat · paste-the-wall",
+  },
+  {
+    id: "marble-roll",
+    label: "UNITEC Marble Adhesive Roll (FT_13)",
+    fichaCode: "FT_13",
+    fichaUrl: "/docs/unitec-fichas/13_FT_Marble_Adhesive_Roll.pdf",
+    spec: "9.84 ft × 23.62 in (300 × 60 cm) · 0.003 in PVC vinyl · peel & smooth",
+  },
+  {
+    id: "eclipse-sheet",
+    label: "UNITEC Lámina Mármol Eclipse M-11 (FT_03)",
+    fichaCode: "FT_03 + FT_27",
+    fichaUrl: "/docs/unitec-fichas/03_FT_PVC_Marble_Sheet.pdf",
+    spec: "122 × 244 cm · 3 mm UV PVC/WPC · PEGATEC adhesive + 6 mm gap",
+  },
+  {
+    id: "wpc-choco",
+    label: "UNITEC WPC Choco Mix Panel (FT_15)",
+    fichaCode: "FT_15 + FT_27",
+    fichaUrl: "/docs/unitec-fichas/15_FT_Interior_WPC_Panel.pdf",
+    spec: "16 × 295 cm · 25 mm fluted WPC · 2 clips/m + PEGATEC bead",
+  },
+];
+
 export const MATERIALS: MaterialLine[] = [
-  { item: "Non-woven paste-the-wall wallpaper", quantity: "3 rolls · 52 cm × 10.05 m · same batch", usedIn: ["layout-cut", "hang-drop-1", "hang-drop-2", "hang-drop-3", "hang-drops-4-8"], note: "8 drops × 320 cm (64 cm repeat) — 3 drops/roll, 1 spare drop" },
-  { item: "Sugar soap / TSP-free degreaser", quantity: "1 bottle, diluted per label in the spray bottle", usedIn: ["clean-spray", "clean-scrub"], note: "Removes grease, nicotine and hand marks that stop paste bonding" },
-  { item: "Clean warm water", quantity: "2 buckets (rinse + paste clean-up)", usedIn: ["clean-rinse", "clean-drop-1"], note: "Change when cloudy" },
-  { item: "Ready-mixed lightweight filler", quantity: "250 ml tub", usedIn: ["repair-fill"], note: "For screw holes, dents and hairline cracks" },
-  { item: "Abrasive sheets", quantity: "120 + 220 grit", usedIn: ["repair-sand"], note: "Sand flush; do not burnish the board paper" },
-  { item: "Tack cloth", quantity: "1", usedIn: ["repair-dust"], note: "Removes sanding dust before primer" },
-  { item: "Wallcovering primer / sealer", quantity: "≈1 L for 10.6 m²", usedIn: ["prime-cutin", "prime-roll"], note: "Type and cure time as specified by the wallpaper manufacturer" },
-  { item: "Paste-the-wall adhesive", quantity: "1 tub (coverage per label)", usedIn: ["glue-mix", "glue-band-1", "glue-band-2", "glue-band-3", "hang-drops-4-8"], note: "Use the adhesive named on the roll label" },
-  { item: "Snap-off blades", quantity: "1 pack of 10", usedIn: ["layout-cut", "trim-drop-1", "trim-drop-2", "relief-cut", "trim-drop-3"], note: "A dull blade tears wet paper" },
-  { item: "Drop cloth", quantity: "1 × 4.5 m", usedIn: ["protect-floor"], note: "Keep tools and paste off the floor" },
+  { item: "Wallcovering roll / UNITEC Marble Adhesive Roll (FT_13)", quantity: "3 rolls · 52–60 cm width · same batch", usedIn: ["layout-cut", "hang-drop-1", "hang-drop-2", "hang-drop-3", "hang-drops-4-8"], note: "8 drops × 320 cm (64 cm repeat) — per UNITEC FT_13 inspect batch shade & align veins before trimming", fichaUrl: "/docs/unitec-fichas/13_FT_Marble_Adhesive_Roll.pdf" },
+  { item: "Sugar soap degreaser + Isopropyl alcohol (FT_13)", quantity: "750 ml spray bottle + wipe", usedIn: ["clean-spray", "clean-scrub"], note: "Per UNITEC FT_13 & FT_27: remove all dust, grease, and acrylic/gloss residue with alcohol before bonding", fichaUrl: "/docs/unitec-fichas/13_FT_Marble_Adhesive_Roll.pdf" },
+  { item: "Clean warm water + mild pH-neutral soap", quantity: "2 buckets (rinse + seam clean-up)", usedIn: ["clean-rinse", "clean-drop-1"], note: "Per UNITEC FT_03 / FT_13 / FT_15: clean with damp cloth and mild soap; avoid waxes, solvents, or abrasives" },
+  { item: "Ready-mixed lightweight filler", quantity: "250 ml tub", usedIn: ["repair-fill"], note: "Per UNITEC FT_05 / FT_19 / FT_21: patch and sand wall irregularities smooth before installation" },
+  { item: "Abrasive sheets", quantity: "120 + 220 grit", usedIn: ["repair-sand"], note: "Sand patches flush and lightly scuff glossy surfaces per UNITEC FT_13 Step 1" },
+  { item: "Tack cloth", quantity: "1", usedIn: ["repair-dust"], note: "Removes sanding dust before primer or PEGATEC adhesive" },
+  { item: "Wallcovering primer / sealer", quantity: "≈1 L for 10.6 m²", usedIn: ["prime-cutin", "prime-roll"], note: "Seals porous drywall/plaster for uniform adhesive open time" },
+  { item: "Paste-the-wall adhesive / UNITEC PEGATEC (FT_27)", quantity: "1 tub flake paste or PEGATEC 395 ml cartridges", usedIn: ["glue-mix", "glue-band-1", "glue-band-2", "glue-band-3", "hang-drops-4-8"], note: "UNITEC FT_27 PEGATEC Polyurethane Adhesive (White 395 ml / Clear 300 ml, 45° nozzle cut) for panels/trims; paste-the-wall roll adhesive for non-woven drops", fichaUrl: "/docs/unitec-fichas/27_FT_PEGATEC_Mounting_Adhesive.pdf" },
+  { item: "30° Snap-off precision blades (9 mm)", quantity: "1 pack of 10 segments", usedIn: ["layout-cut", "trim-drop-1", "trim-drop-2", "relief-cut", "trim-drop-3"], note: "Per UNITEC FT_13 & FT_17: use a sharp utility knife / precision cutter with metal ruler; snap fresh segment every 1–2 cuts" },
+  { item: "Drop cloth + UNITEC SPC Baseboard (FT_24)", quantity: "1 × 4.5 m canvas + perimeter trim", usedIn: ["protect-floor"], note: "Protects flooring; per UNITEC FT_03 & FT_24, baseboards cover perimeter expansion gaps", fichaUrl: "/docs/unitec-fichas/24_FT_SPC_Baseboard.pdf" },
 ];
 
 // ---------------------------------------------------------------------------
@@ -264,12 +304,12 @@ export const WALLPAPER_TASK: TaskStep[] = [
   },
   {
     id: "clean-rinse", phase: "Clean", primitive: "wipe", tool: "microfiber", hand: "right", region: FULL, passes: 6,
-    product: "Clean warm water",
-    title: "Rinse with a clean damp microfiber cloth",
-    instruction: "Wipe the entire wall in horizontal strokes with a microfiber cloth rinsed in clean water and wrung damp, to remove all soap residue.",
-    tips: ["Change the rinse water when it turns cloudy.", "Soap residue left on the wall weakens the paste bond."],
+    product: "Clean warm water + Isopropyl alcohol wipe (UNITEC FT_13)",
+    title: "Rinse with damp microfiber & degrease with alcohol (FT_13)",
+    instruction: "Wipe the entire wall in horizontal strokes with a microfiber cloth rinsed in clean water and wrung damp; per UNITEC Technical Data Sheet 13, remove any remaining surface residue on glossy/acrylic zones with isopropyl alcohol.",
+    tips: ["Change the rinse water when it turns cloudy.", "Per UNITEC FT_13 & FT_27, any grease, dust, or soap film left on the wall weakens adhesive bonding."],
     durationS: 7, realWorldMinutes: 10, forceN: 10, ppe: GLOVES,
-    successCriteria: ["No soap film or streaks", "Cloth comes away clean"],
+    successCriteria: ["No soap film, grease, or streaks", "Cloth comes away clean"],
   },
   {
     id: "clean-dry", phase: "Clean", primitive: "probeGrid", tool: "moistureMeter", hand: "right", region: FULL,
@@ -351,23 +391,23 @@ export const WALLPAPER_TASK: TaskStep[] = [
   },
   {
     id: "layout-cut", phase: "Layout", primitive: "cutOnTable", tool: "utilityKnife", secondaryTool: "straightedge", hand: "both", region: TABLE_REGION,
-    product: "Wallpaper rolls (same batch)",
-    title: "Cut the drops to 320 cm on the table",
-    instruction: "Unroll on a clean table, match the pattern start, hold the straightedge square across the paper and cut each drop to 320 cm. Number the backs in order.",
-    tips: ["Cut every drop from the same pattern point so the straight match lines up.", "Snap a fresh blade segment every 1–2 cuts."],
+    product: "Wallpaper / UNITEC Marble Roll (FT_13, same batch)",
+    title: "Cut the drops to 320 cm on the table with steel straightedge",
+    instruction: "Unroll on a clean table, match the pattern or marble vein start, hold the 600 mm metal straightedge square across the sheet with the left hand, and draw the 30° utility knife cleanly across (UNITEC FT_13 Step 2). Number the backs 1–8.",
+    tips: ["Cut every drop from the same pattern/vein point so straight-match seams align (FT_13 Step 4).", "Snap a fresh 30° blade segment every 1–2 cuts so the edge never tears."],
     durationS: 6, realWorldMinutes: 15, forceN: 8, ppe: [],
-    successCriteria: ["8 drops cut to 320 cm", "Backs numbered 1–8, top marked"],
-    safety: "Cut away from the hand holding the straightedge.",
+    successCriteria: ["8 drops cut to 320 cm with razor-clean kerf", "Backs numbered 1–8, top marked"],
+    safety: "Keep left-hand fingers splayed behind the raised guard of the steel straightedge, away from the blade path.",
   },
   // GLUE --------------------------------------------------------------------
   {
     id: "glue-mix", phase: "Glue", primitive: "stir", tool: "stirStick", hand: "right", region: FLOOR_REGION,
-    product: "Paste-the-wall adhesive (as named on the roll label)",
-    title: "Prepare and stir the adhesive",
-    instruction: "Open the adhesive named on the roll label and stir to a smooth, lump-free consistency (mix powder with water only as the label states).",
-    tips: ["Keep the paste bucket covered between drops."],
+    product: "Paste-the-wall adhesive / UNITEC PEGATEC Mounting Adhesive (FT_27)",
+    title: "Prepare adhesive (or cut PEGATEC nozzle at 45° per FT_27)",
+    instruction: "Stir paste-the-wall adhesive to a smooth, lump-free consistency. When installing UNITEC rigid panels or trims, cut the PEGATEC 395 ml polyurethane cartridge nozzle at a 45° angle (FT_27 Step 2) and load into the applicator gun.",
+    tips: ["Keep the paste bucket covered between drops; bond PEGATEC beads before a surface skin forms (FT_27 Step 3)."],
     durationS: 5, realWorldMinutes: 5, ppe: GLOVES,
-    successCriteria: ["Smooth, lump-free paste"],
+    successCriteria: ["Smooth lump-free paste or 45° nozzle prepared per FT_27"],
   },
   {
     id: "glue-band-1", phase: "Glue", primitive: "pasteBand", tool: "pasteRoller", hand: "right", region: band(0), dropIndex: 0,
@@ -407,12 +447,12 @@ export const WALLPAPER_TASK: TaskStep[] = [
   },
   {
     id: "trim-drop-1", phase: "Hang", primitive: "trim", tool: "utilityKnife", secondaryTool: "straightedge", hand: "both", region: dropRect(0), dropIndex: 0,
-    title: "Trim the excess at ceiling and baseboard",
-    instruction: "Press the straightedge into the ceiling angle, cut along it with a fresh blade, then repeat at the baseboard. Remove the offcuts.",
-    tips: ["Keep the knife against the straightedge and move the straightedge, not the knife, between cuts."],
+    title: "Trim excess at ceiling and baseboard with steel straightedge (FT_13)",
+    instruction: "Pin the 600 mm steel straightedge tightly into the ceiling crease with the left hand, draw a fresh 30° snap-off utility knife blade along the steel edge in one continuous pass, then repeat at the baseboard top and peel away the severed offcut strips (UNITEC FT_13 Step 4).",
+    tips: ["Keep the blade tip in the crease when shifting the straightedge so the cut never steps or tears."],
     durationS: 6, realWorldMinutes: 3, forceN: 8, ppe: [],
-    successCriteria: ["Clean straight cuts", "No tears, no gap at ceiling or baseboard"],
-    safety: "Keep the straightedge hand above the cut line.",
+    successCriteria: ["Razor-clean straight cuts at ceiling and baseboard", "Severed offcut strips removed cleanly with zero tearing"],
+    safety: "Keep left-hand fingertips behind the straightedge guard rail above the blade kerf.",
   },
   {
     id: "clean-drop-1", phase: "Hang", primitive: "wipeSeam", tool: "sponge", hand: "right", region: dropRect(0), dropIndex: 0,

@@ -7,10 +7,14 @@ import {
   Check,
   ClipboardCopy,
   Download,
+  ExternalLink,
+  FileText,
   Hand,
+  Layers,
   Pause,
   Play,
   Route,
+  Scissors,
   ShieldCheck,
   SkipBack,
   SkipForward,
@@ -24,6 +28,7 @@ import {
   MATERIALS,
   PHASE_COLORS,
   PHASE_ORDER,
+  SIMULATOR_SURFACE_MODES,
   TASK_REAL_WORLD_MINUTES,
   TASK_TOTAL_SECONDS,
   TOOLS,
@@ -33,10 +38,18 @@ import {
   sampleStep,
   stepAtTime,
   stepStartSeconds,
+  type SimulatorSurfaceMode,
 } from "@contracts/tasks/wallpaperTask";
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 const fmtMinutes = (m: number) => (m >= 60 ? `${Math.floor(m / 60)} h ${m % 60 ? `${m % 60} min` : ""}` : `${m} min`);
+
+const CUTTING_SHORTCUTS = [
+  { stepIndex: 15, label: "16 · Table Cut (Knife + Straightedge)" },
+  { stepIndex: 21, label: "22 · Drop 1 Ceiling & Baseboard Cut" },
+  { stepIndex: 26, label: "27 · Drop 2 Trim & Peel" },
+  { stepIndex: 30, label: "31 · Outlet X-Relief Cut (4 Flaps)" },
+];
 
 export default function TaskSimulatorPage() {
   const stageRef = useRef<HTMLDivElement>(null);
@@ -53,12 +66,17 @@ export default function TaskSimulatorPage() {
   const [speed, setSpeed] = useState(1);
   const [autoCam, setAutoCam] = useState(true);
   const [showPath, setShowPath] = useState(true);
+  const [surfaceMode, setSurfaceMode] = useState<SimulatorSurfaceMode>(() => {
+    const m = params.get("surface") as SimulatorSurfaceMode | null;
+    return m && SIMULATOR_SURFACE_MODES.some((s) => s.id === m) ? m : "botanical";
+  });
   const [feedback, setFeedback] = useState("");
   const [webglError, setWebglError] = useState("");
 
   const { index, progress } = stepAtTime(time);
   const step = WALLPAPER_TASK[index];
   const sample = sampleStep(step, progress);
+  const activeSurface = SIMULATOR_SURFACE_MODES.find((s) => s.id === surfaceMode) ?? SIMULATOR_SURFACE_MODES[0];
 
   useEffect(() => {
     if (!stageRef.current) return;
@@ -88,6 +106,10 @@ export default function TaskSimulatorPage() {
   }, [showPath]);
 
   useEffect(() => {
+    sceneRef.current?.setSurfaceMode(surfaceMode);
+  }, [surfaceMode]);
+
+  useEffect(() => {
     if (!playing) return;
     let last = performance.now();
     let raf = 0;
@@ -108,9 +130,9 @@ export default function TaskSimulatorPage() {
     return () => cancelAnimationFrame(raf);
   }, [playing, speed]);
 
-  const goTo = useCallback((i: number) => {
+  const goTo = useCallback((i: number, atFrac = 0.001) => {
     const safe = Math.max(0, Math.min(WALLPAPER_TASK.length - 1, i));
-    setTime(stepStartSeconds(safe) + 0.001);
+    setTime(stepStartSeconds(safe) + WALLPAPER_TASK[safe].durationS * atFrac);
     setAutoCam(true);
   }, []);
 
@@ -167,12 +189,56 @@ export default function TaskSimulatorPage() {
       <main className="sim-main">
         <header className="sim-heading">
           <div>
-            <p className="mono-kicker acid-text">3D TASK SIMULATOR · HUMAN + MACHINE REPLAYABLE</p>
-            <h1>Paste-the-wall wallpaper — blank wall to finished room</h1>
+            <p className="mono-kicker acid-text">3D HUMAN + MACHINE SIMULATOR · OFFICIAL UNITEC FICHAS TÉCNICAS (FT_03 / FT_13 / FT_15 / FT_27)</p>
+            <h1>Full-body human installer, real cuts & machine toolpaths</h1>
             <p className="sim-sub">
-              {WALLPAPER_TASK.length} steps · 4.16 × 2.55 m wall · 8 drops · 3 rolls · ≈{fmtMinutes(TASK_REAL_WORLD_MINUTES)} on site
-              (incl. drying & primer cure)
+              {WALLPAPER_TASK.length} steps · 4.16 × 2.55 m wall · 8 drops · ≈{fmtMinutes(TASK_REAL_WORLD_MINUTES)} on site ·{" "}
+              <strong>{activeSurface.spec}</strong>
             </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "10px", alignItems: "center" }}>
+              <span className="mono-kicker" style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginRight: "4px" }}>
+                <Layers size={13} /> Surface:
+              </span>
+              {SIMULATOR_SURFACE_MODES.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setSurfaceMode(m.id)}
+                  className={surfaceMode === m.id ? "primary-button" : "ghost-button"}
+                  style={{ padding: "5px 10px", fontSize: "12px" }}
+                >
+                  {m.label}
+                </button>
+              ))}
+              <a
+                href={activeSurface.fichaUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="secondary-button"
+                style={{ padding: "5px 10px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+              >
+                <FileText size={13} /> Open {activeSurface.fichaCode} PDF <ExternalLink size={12} />
+              </a>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px", alignItems: "center" }}>
+              <span className="mono-kicker" style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginRight: "4px" }}>
+                <Scissors size={13} /> Jump to real human cuts:
+              </span>
+              {CUTTING_SHORTCUTS.map((c) => (
+                <button
+                  key={c.stepIndex}
+                  type="button"
+                  onClick={() => {
+                    setPlaying(false);
+                    goTo(c.stepIndex, 0.58);
+                  }}
+                  className={index === c.stepIndex ? "primary-button" : "ghost-button"}
+                  style={{ padding: "4px 9px", fontSize: "11.5px" }}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="sim-export">
             <button className="secondary-button" onClick={() => copy(buildHumanChecklist(), "Human checklist")}>
@@ -348,7 +414,7 @@ export default function TaskSimulatorPage() {
 
         <section className="sim-bom">
           <div>
-            <p className="mono-kicker acid-text">MATERIALS & PRODUCTS</p>
+            <p className="mono-kicker acid-text">MATERIALS & OFFICIAL UNITEC FICHAS TÉCNICAS</p>
             <table>
               <thead>
                 <tr>
@@ -361,7 +427,19 @@ export default function TaskSimulatorPage() {
                 {MATERIALS.map((m) => (
                   <tr key={m.item}>
                     <td>
-                      <strong>{m.item}</strong>
+                      <strong>
+                        {m.item}{" "}
+                        {m.fichaUrl && (
+                          <a
+                            href={m.fichaUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: "var(--acid)", fontSize: "11px", marginLeft: "6px", textDecoration: "underline" }}
+                          >
+                            [PDF]
+                          </a>
+                        )}
+                      </strong>
                       <small>{m.note}</small>
                     </td>
                     <td>{m.quantity}</td>
@@ -399,8 +477,8 @@ export default function TaskSimulatorPage() {
               </tbody>
             </table>
             <p className="sim-note">
-              <Timer size={13} /> Forces and times are nominal planning values for people and robots. Primer, adhesive and wallpaper labels
-              always take priority.
+              <Timer size={13} /> Forces and times are nominal planning values for people and robots. Official UNITEC USA DESIGN Technical Data
+              Sheets (FT_03, FT_13, FT_15, FT_17, FT_27) take priority.
             </p>
           </div>
         </section>

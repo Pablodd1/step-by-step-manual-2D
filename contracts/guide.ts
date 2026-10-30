@@ -93,7 +93,7 @@ export const guideSourceSchema = z.object({
   id: z.string(),
   title: z.string(),
   publisher: z.string(),
-  url: z.string().url(),
+  url: z.string().min(1),
   note: z.string().max(400),
 });
 export type GuideSource = z.infer<typeof guideSourceSchema>;
@@ -111,7 +111,7 @@ export const productSchema = z.object({
   packCoverageM2: z.number().positive(),
   imageUrl: z.string().min(1),
   textureUrl: z.string().min(1),
-  technicalSheetUrl: z.string().url(),
+  technicalSheetUrl: z.string().min(1),
   geometry: z.enum(["fluted", "flat", "upholstered"]),
   finish: z.string().min(1).max(160),
   approvalStatus: z.literal("visual-prototype"),
