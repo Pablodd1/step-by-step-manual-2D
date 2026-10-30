@@ -51,8 +51,11 @@ export default function Home() {
             </p>
 
             <div className="hero-actions">
-              <Link className="primary-button" to="/guides/paste-the-wall">
-                Open 2D/3D Field Guide <ArrowRight size={17} />
+              <Link className="primary-button" to="/simulator">
+                3D Task Simulator (36 steps) <ArrowRight size={17} />
+              </Link>
+              <Link className="secondary-button" to="/guides/paste-the-wall">
+                2D/3D Field Guide
               </Link>
               <Link className="secondary-button" to="/materials">
                 UNITEC 3-Material Pilot

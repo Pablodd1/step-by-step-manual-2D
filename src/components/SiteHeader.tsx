@@ -25,6 +25,7 @@ export function SiteHeader() {
         <NavLink to="/" end>
           Guides
         </NavLink>
+        <NavLink to="/simulator">3D Simulator</NavLink>
         <NavLink to="/materials">UNITEC Pilot</NavLink>
         <NavLink to="/calculator">Calculator</NavLink>
         <NavLink to="/studio">Field Studio</NavLink>
@@ -56,8 +57,8 @@ export function SiteHeader() {
           </select>
         </label>
 
-        <Link className="header-action" to="/guides/paste-the-wall">
-          Start Guide
+        <Link className="header-action" to="/simulator">
+          Start 3D Task
           <ArrowUpRight size={15} />
         </Link>
       </div>

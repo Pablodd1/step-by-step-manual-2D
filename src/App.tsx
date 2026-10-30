@@ -7,6 +7,7 @@ import Login from "./pages/Login";
 import MaterialsPage from "./pages/MaterialsPage";
 import NotFound from "./pages/NotFound";
 import StudioPage from "./pages/StudioPage";
+import TaskSimulatorPage from "./pages/TaskSimulatorPage";
 
 export function App() {
   return (
@@ -18,6 +19,7 @@ export function App() {
           <Route path="/guides/:slug" element={<GuidePage />} />
           <Route path="/calculator" element={<CalculatorPage />} />
           <Route path="/studio" element={<StudioPage />} />
+          <Route path="/simulator" element={<TaskSimulatorPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
