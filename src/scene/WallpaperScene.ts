@@ -363,6 +363,18 @@ export class WallpaperScene {
     this.setCamera(this.currentVisual.camera);
   }
 
+  setCameraPreset(preset: "step" | "front" | "macro" | "iso") {
+    if (preset === "step") {
+      this.resetCamera();
+    } else if (preset === "front") {
+      this.setCamera({ position: [0, 1.55, 5.4], target: [0, 1.5, 0] });
+    } else if (preset === "macro") {
+      this.setCamera({ position: [0.22, 1.72, 1.85], target: [0.05, 1.65, 0] });
+    } else if (preset === "iso") {
+      this.setCamera({ position: [4.2, 2.85, 5.1], target: [0, 1.4, 0.2] });
+    }
+  }
+
   private currentStyle: SceneStyle = "drawing";
   getStyle(): SceneStyle { return this.currentStyle; }
   setStyle(style: SceneStyle) {

@@ -1,9 +1,9 @@
 import { Link, NavLink } from "react-router";
-import { ArrowUpRight, ShieldCheck, UserCheck } from "lucide-react";
+import { ArrowUpRight, Ruler, ShieldCheck, UserCheck } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function SiteHeader() {
-  const { activeProfileKey, switchProfile } = useAuth();
+  const { activeProfileKey, switchProfile, unitSystem, toggleUnitSystem } = useAuth();
 
   return (
     <header className="site-header">
@@ -31,6 +31,16 @@ export function SiteHeader() {
       </nav>
 
       <div className="header-right-cluster">
+        <button
+          type="button"
+          className="unit-header-button"
+          onClick={toggleUnitSystem}
+          title="Switch between Metric (cm/mm) and US Imperial (ft/in)"
+        >
+          <Ruler size={13} />
+          <span>{unitSystem === "metric" ? "CM / MM" : "FT / IN"}</span>
+        </button>
+
         <label className="demo-role-switcher" title="Instant Demo Role Switcher (No external login required)">
           {activeProfileKey === "admin" ? <ShieldCheck size={13} /> : <UserCheck size={13} />}
           <span className="sr-only">Demo Role</span>

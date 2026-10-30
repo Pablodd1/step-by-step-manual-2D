@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import type { UnitSystem } from "@/lib/units";
 
 export type DemoUserRole = "admin" | "user";
 
@@ -33,9 +34,13 @@ interface AuthContextValue {
   activeProfileKey: "admin" | "installer" | "guest";
   switchProfile: (key: "admin" | "installer" | "guest") => void;
   logout: () => void;
+  unitSystem: UnitSystem;
+  setUnitSystem: (system: UnitSystem) => void;
+  toggleUnitSystem: () => void;
 }
 
 const STORAGE_KEY = "plumb_unitec_demo_profile_v1";
+const UNIT_KEY = "plumb_unitec_unit_system_v1";
 
 const AuthContext = createContext<AuthContextValue>({
   user: DEMO_PROFILES.admin,
@@ -43,6 +48,9 @@ const AuthContext = createContext<AuthContextValue>({
   activeProfileKey: "admin",
   switchProfile: () => {},
   logout: () => {},
+  unitSystem: "metric",
+  setUnitSystem: () => {},
+  toggleUnitSystem: () => {},
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -56,6 +64,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return "admin";
   });
 
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>(() => {
+    try {
+      const saved = localStorage.getItem(UNIT_KEY);
+      if (saved === "metric" || saved === "imperial") return saved;
+    } catch {
+      // ignore
+    }
+    return "metric";
+  });
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, activeProfileKey);
@@ -63,6 +81,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // ignore storage errors
     }
   }, [activeProfileKey]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(UNIT_KEY, unitSystem);
+    } catch {
+      // ignore
+    }
+  }, [unitSystem]);
 
   const user = activeProfileKey === "guest" ? null : DEMO_PROFILES[activeProfileKey];
 
@@ -74,6 +100,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         activeProfileKey,
         switchProfile: setActiveProfileKey,
         logout: () => setActiveProfileKey("guest"),
+        unitSystem,
+        setUnitSystem,
+        toggleUnitSystem: () => setUnitSystem((u) => (u === "metric" ? "imperial" : "metric")),
       }}
     >
       {children}

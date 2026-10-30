@@ -10,6 +10,7 @@ import {
   Layers,
   Printer,
   RotateCcw,
+  Ruler,
   Trash2,
 } from "lucide-react";
 import {
@@ -21,9 +22,11 @@ import {
   type UnitecPanelInput,
   type UnitecSku,
 } from "@contracts/calculator";
+import { CalculatorWallDiagram } from "@/components/CalculatorWallDiagram";
 import { SiteHeader } from "@/components/SiteHeader";
 import { useAuth } from "@/contexts/AuthContext";
 import { trpc } from "@/lib/trpc";
+import { formatAreaSqM, formatCm, formatMeters } from "@/lib/units";
 
 export default function CalculatorPage() {
   const [searchParams] = useSearchParams();
@@ -55,7 +58,7 @@ export default function CalculatorPage() {
 
   const [estimateName, setEstimateName] = useState("Main feature wall");
   const [saveFeedback, setSaveFeedback] = useState("");
-  const { user, switchProfile } = useAuth();
+  const { user, switchProfile, unitSystem, toggleUnitSystem } = useAuth();
   const utils = trpc.useUtils();
   const savedEstimates = trpc.calculator.listMine.useQuery(undefined, {
     enabled: Boolean(user),
@@ -137,6 +140,11 @@ export default function CalculatorPage() {
     setSaveFeedback(`Loaded "${name}".`);
   };
 
+  const unitecModW =
+    unitecInput.sku === "14122019" ? 16 : unitecInput.sku === "14121211" ? 122 : 20;
+  const unitecModH =
+    unitecInput.sku === "14122019" ? 295 : unitecInput.sku === "14121211" ? 244 : 110;
+
   return (
     <div className="site-shell calculator-page">
       <SiteHeader />
@@ -177,6 +185,14 @@ export default function CalculatorPage() {
           >
             <Layers size={15} /> UNITEC USA Panel & Sheet Estimator (3 SKUs)
           </button>
+          <button
+            type="button"
+            className="unit-calc-toggle"
+            onClick={toggleUnitSystem}
+            title="Toggle display units between Metric (cm / m²) and US Imperial (ft / in / sq ft)"
+          >
+            <Ruler size={15} /> Display: {unitSystem === "metric" ? "Metric (cm / m²)" : "US Imperial (ft / in)"}
+          </button>
         </div>
 
         {calcTab === "unitec" ? (
@@ -209,7 +225,9 @@ export default function CalculatorPage() {
                     onClick={() => setUnitecInput((c) => ({ ...c, sku: "14122019" }))}
                   >
                     <strong>SKU 14122019 · WPC Choco Mix</strong>
-                    <span>16 × 295 cm · 25 mm fluted panel + Clip 14122902</span>
+                    <span>
+                      {formatCm(16, unitSystem)} × {formatCm(295, unitSystem)} · 25 mm fluted panel + Clip 14122902
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -217,7 +235,9 @@ export default function CalculatorPage() {
                     onClick={() => setUnitecInput((c) => ({ ...c, sku: "14121211" }))}
                   >
                     <strong>SKU 14121211 · Mármol Eclipse M-11</strong>
-                    <span>122 × 244 cm · 3 mm UV high-gloss PVC sheet</span>
+                    <span>
+                      {formatCm(122, unitSystem)} × {formatCm(244, unitSystem)} · 3 mm UV high-gloss PVC sheet
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -225,7 +245,9 @@ export default function CalculatorPage() {
                     onClick={() => setUnitecInput((c) => ({ ...c, sku: "14126406" }))}
                   >
                     <strong>SKU 14126406 · DuoSmall Vainilla 820</strong>
-                    <span>20 × 110 cm · 25 mm upholstered arch module</span>
+                    <span>
+                      {formatCm(20, unitSystem)} × {formatCm(110, unitSystem)} · 25 mm upholstered arch module
+                    </span>
                   </button>
                 </div>
               </div>
@@ -233,7 +255,10 @@ export default function CalculatorPage() {
               <div className="form-section">
                 <div className="form-section-header">
                   <span>02 / WALL DIMENSIONS & RESERVE</span>
-                  <small>Measure the widest and tallest points of the installation zone</small>
+                  <small>
+                    Current: {formatCm(unitecInput.wallWidthCm, unitSystem)} ×{" "}
+                    {formatCm(unitecInput.wallHeightCm, unitSystem)}
+                  </small>
                 </div>
                 <div className="field-grid">
                   <label>
@@ -268,6 +293,16 @@ export default function CalculatorPage() {
                   </label>
                 </div>
               </div>
+
+              <CalculatorWallDiagram
+                mode="unitec"
+                wallWidthCm={unitecInput.wallWidthCm}
+                wallHeightCm={unitecInput.wallHeightCm}
+                moduleWidthCm={unitecModW}
+                moduleHeightCm={unitecModH}
+                sku={unitecInput.sku}
+                unitSystem={unitSystem}
+              />
             </form>
 
             <aside className="calculation-result" aria-live="polite">
@@ -279,8 +314,9 @@ export default function CalculatorPage() {
                     <div>
                       <span>units recommended with {unitecInput.wastePercent}% reserve</span>
                       <small>
-                        {unitecOutcome.result.unitsNeeded} net units · {unitecOutcome.result.packsRecommended}{" "}
-                        factory pack(s) of {unitecOutcome.result.packSize}
+                        {unitecOutcome.result.unitsNeeded} net units ·{" "}
+                        {unitecOutcome.result.packsRecommended} factory pack(s) of{" "}
+                        {unitecOutcome.result.packSize}
                       </small>
                     </div>
                   </div>
@@ -308,7 +344,7 @@ export default function CalculatorPage() {
                     </div>
                     <div>
                       <dt>Wall area</dt>
-                      <dd>{unitecOutcome.result.grossWallAreaSqM} m²</dd>
+                      <dd>{formatAreaSqM(unitecOutcome.result.grossWallAreaSqM, unitSystem)}</dd>
                     </div>
                     <div>
                       <dt>Ref. catalog total</dt>
@@ -406,7 +442,10 @@ export default function CalculatorPage() {
               <div className="form-section">
                 <div className="form-section-header">
                   <span>02 / WALL MEASUREMENTS</span>
-                  <small>Use the widest and tallest points</small>
+                  <small>
+                    Current: {formatCm(input.wallWidthCm, unitSystem)} ×{" "}
+                    {formatCm(input.wallHeightCm, unitSystem)}
+                  </small>
                 </div>
 
                 <div className="field-grid">
@@ -522,6 +561,16 @@ export default function CalculatorPage() {
                   </label>
                 </div>
               </div>
+
+              <CalculatorWallDiagram
+                mode="wallpaper"
+                wallWidthCm={input.wallWidthCm}
+                wallHeightCm={input.wallHeightCm}
+                moduleWidthCm={input.rollWidthCm}
+                moduleHeightCm={input.rollLengthCm}
+                openingsAreaSqM={input.openingsAreaSqM}
+                unitSystem={unitSystem}
+              />
             </form>
 
             <aside className="calculation-result" aria-live="polite">
@@ -553,7 +602,7 @@ export default function CalculatorPage() {
                     </div>
                     <div>
                       <dt>Cut length / drop</dt>
-                      <dd>{outcome.result.cutLengthCm} cm</dd>
+                      <dd>{formatCm(outcome.result.cutLengthCm, unitSystem)}</dd>
                     </div>
                     <div>
                       <dt>Drops / roll</dt>
@@ -561,11 +610,11 @@ export default function CalculatorPage() {
                     </div>
                     <div>
                       <dt>Total strip length</dt>
-                      <dd>{outcome.result.linearMetersRequired} m</dd>
+                      <dd>{formatMeters(outcome.result.linearMetersRequired, unitSystem)}</dd>
                     </div>
                     <div>
                       <dt>Net wall area</dt>
-                      <dd>{outcome.result.netWallAreaSqM} m²</dd>
+                      <dd>{formatAreaSqM(outcome.result.netWallAreaSqM, unitSystem)}</dd>
                     </div>
                     <div>
                       <dt>Expected offcut</dt>
@@ -694,9 +743,10 @@ export default function CalculatorPage() {
                       <span className="mono-kicker">{item.method}</span>
                       <h3>{item.name}</h3>
                       <p>
-                        {item.input.wallWidthCm} × {item.input.wallHeightCm} cm ·{" "}
-                        <strong>{item.result.recommendedRolls} rolls</strong> ({item.result.cutLengthCm}{" "}
-                        cm drops)
+                        {formatCm(item.input.wallWidthCm, unitSystem)} ×{" "}
+                        {formatCm(item.input.wallHeightCm, unitSystem)} ·{" "}
+                        <strong>{item.result.recommendedRolls} rolls</strong> (
+                        {formatCm(item.result.cutLengthCm, unitSystem)} drops)
                       </p>
                     </div>
                     <div className="saved-estimate-actions">

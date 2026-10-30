@@ -2,10 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Box,
+  Camera,
   Check,
+  CheckCircle2,
   Clock3,
   Expand,
   Layers,
+  Mic,
+  MicOff,
   MousePointer2,
   PackageOpen,
   Pause,
@@ -14,6 +18,7 @@ import {
   Printer,
   Rewind,
   RotateCcw,
+  Ruler,
   SkipBack,
   SkipForward,
   Users,
@@ -23,8 +28,9 @@ import {
   Wrench,
 } from "lucide-react";
 import { guideTimeAtStep, guideTotalDuration, type Guide } from "@contracts/guide";
+import { useAuth } from "@/contexts/AuthContext";
 import { Blueprint2DOverlay } from "@/scene/Blueprint2DOverlay";
-import type { GuideEngine } from "@/scene/GuideEngine";
+import type { CameraPreset, GuideEngine } from "@/scene/GuideEngine";
 import type { SceneStyle } from "@/scene/WallpaperScene";
 import { SafetyGate } from "./SafetyGate";
 import { SceneCanvas } from "./SceneCanvas";
@@ -41,13 +47,18 @@ const formatTime = (seconds: number) => {
 };
 
 export function GuidePlayer({ guide, onPrint, onExport }: GuidePlayerProps) {
+  const { unitSystem, toggleUnitSystem } = useAuth();
   const duration = useMemo(() => guideTotalDuration(guide), [guide]);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [style, setStyle] = useState<SceneStyle>(guide.product ? "realistic" : "2d");
+  const [camPreset, setCamPreset] = useState<CameraPreset>("step");
   const [narration, setNarration] = useState(false);
+  const [voiceControl, setVoiceControl] = useState(false);
+  const [lastVoiceCmd, setLastVoiceCmd] = useState<string>("");
+  const [checkedSteps, setCheckedSteps] = useState<Set<string>>(() => new Set());
   const [engine, setEngine] = useState<GuideEngine | null>(null);
   const [safetyStep, setSafetyStep] = useState<number | null>(null);
   const [confirmedGates, setConfirmedGates] = useState<Set<number>>(() => new Set());
@@ -96,6 +107,7 @@ export function GuidePlayer({ guide, onPrint, onExport }: GuidePlayerProps) {
     (index: number) => {
       const safeIndex = Math.max(0, Math.min(guide.steps.length - 1, index));
       setPlaying(false);
+      setCamPreset("step");
       requestSeek(guideTimeAtStep(guide, safeIndex) + 0.001);
     },
     [guide, requestSeek]
@@ -106,7 +118,9 @@ export function GuidePlayer({ guide, onPrint, onExport }: GuidePlayerProps) {
     setPlaying(false);
     setDirection(1);
     setStyle(guide.product ? "realistic" : "2d");
+    setCamPreset("step");
     setConfirmedGates(new Set());
+    setCheckedSteps(new Set());
     setSafetyStep(null);
     pendingTime.current = null;
   }, [guide]);
@@ -157,6 +171,69 @@ export function GuidePlayer({ guide, onPrint, onExport }: GuidePlayerProps) {
     return () => window.speechSynthesis.cancel();
   }, [currentStepIndex, narration, step.narration]);
 
+  // Hands-free Web Speech API Voice Control for installers with paste/adhesive on hands
+  useEffect(() => {
+    if (!voiceControl) return;
+    const SpeechRec =
+      (window as unknown as { SpeechRecognition?: any; webkitSpeechRecognition?: any })
+        .SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: any }).webkitSpeechRecognition;
+
+    if (!SpeechRec) {
+      setLastVoiceCmd("SpeechRecognition not supported in this browser");
+      return;
+    }
+
+    const recognition = new SpeechRec();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event: any) => {
+      const transcript = String(
+        event.results[event.results.length - 1]?.[0]?.transcript ?? ""
+      )
+        .trim()
+        .toLowerCase();
+      if (!transcript) return;
+      setLastVoiceCmd(`Heard: "${transcript}"`);
+
+      if (transcript.includes("next") || transcript.includes("forward")) {
+        goToStep(currentStepIndex + 1);
+      } else if (transcript.includes("back") || transcript.includes("previous")) {
+        goToStep(currentStepIndex - 1);
+      } else if (transcript.includes("play") || transcript.includes("start")) {
+        setPlaying(true);
+      } else if (transcript.includes("pause") || transcript.includes("stop")) {
+        setPlaying(false);
+      } else if (transcript.includes("replay") || transcript.includes("repeat")) {
+        requestSeek(stepStart + 0.001);
+        setPlaying(true);
+      } else if (transcript.includes("blueprint")) {
+        setStyle("2d");
+      } else if (transcript.includes("drawing")) {
+        setStyle("drawing");
+      } else if (transcript.includes("realistic")) {
+        setStyle("realistic");
+      }
+    };
+
+    try {
+      recognition.start();
+      setLastVoiceCmd('Listening: say "Next", "Back", "Play", "Pause", "Replay"');
+    } catch {
+      // ignore start error
+    }
+
+    return () => {
+      try {
+        recognition.stop();
+      } catch {
+        // ignore
+      }
+    };
+  }, [voiceControl, currentStepIndex, goToStep, requestSeek, stepStart]);
+
   useEffect(
     () => () => {
       if ("speechSynthesis" in window) window.speechSynthesis.cancel();
@@ -172,6 +249,20 @@ export function GuidePlayer({ guide, onPrint, onExport }: GuidePlayerProps) {
     setSafetyStep(null);
     pendingTime.current = null;
     setTime(destination);
+  };
+
+  const toggleStepCheck = (stepId: string) => {
+    setCheckedSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(stepId)) next.delete(stepId);
+      else next.add(stepId);
+      return next;
+    });
+  };
+
+  const applyCameraPreset = (preset: CameraPreset) => {
+    setCamPreset(preset);
+    engine?.setCameraPreset?.(preset);
   };
 
   const toggleFullscreen = async () => {
@@ -197,9 +288,11 @@ export function GuidePlayer({ guide, onPrint, onExport }: GuidePlayerProps) {
       goToStep(currentStepIndex - 1);
     } else if (event.key.toLowerCase() === "r") {
       event.preventDefault();
-      engine?.resetCamera();
+      applyCameraPreset("step");
     }
   };
+
+  const isStepChecked = checkedSteps.has(step.id);
 
   return (
     <section
@@ -213,16 +306,27 @@ export function GuidePlayer({ guide, onPrint, onExport }: GuidePlayerProps) {
         <div className="scene-topbar">
           <div className="scene-topbar-meta">
             <span className="live-dot" />
-            <span>{style === "2d" ? "2D Orthographic CAD" : "Deterministic 3D"}</span>
+            <span>
+              {style === "2d" ? "2D Orthographic CAD + Loupe" : "Deterministic 3D"}
+            </span>
             <span className="meta-divider">/</span>
             <span>{guide.steps.length} steps</span>
+            <span className="meta-divider">/</span>
+            <button
+              type="button"
+              className="unit-inline-pill"
+              onClick={toggleUnitSystem}
+              title="Toggle Metric (cm/mm) vs US Imperial (ft/in)"
+            >
+              <Ruler size={11} /> {unitSystem === "metric" ? "CM / MM" : "FT / IN"}
+            </button>
           </div>
           <div className="scene-style-switch" aria-label="Scene rendering style">
             <button
               className={style === "2d" ? "active" : ""}
               onClick={() => setStyle("2d")}
               aria-pressed={style === "2d"}
-              title="2D Orthographic Blueprint & Cross-Section"
+              title="2D Orthographic Blueprint, Animated Tool Vectors & 3x Loupe"
             >
               <Layers size={15} /> 2D Blueprint
             </button>
@@ -249,16 +353,48 @@ export function GuidePlayer({ guide, onPrint, onExport }: GuidePlayerProps) {
           <SceneCanvas key={guide.slug} guide={guide} time={time} style={style} onReady={setEngine} />
           {style === "2d" && <Blueprint2DOverlay guide={guide} currentTime={time} />}
           {style !== "2d" && (
-            <div className="scene-callout">
-              <span>{String(currentStepIndex + 1).padStart(2, "0")}</span>
-              <p>{step.visual.callout}</p>
-            </div>
+            <>
+              <div className="scene-callout">
+                <span>{String(currentStepIndex + 1).padStart(2, "0")}</span>
+                <p>{step.visual.callout}</p>
+              </div>
+              <div className="camera-preset-bar" role="group" aria-label="3D Camera Angle Presets">
+                <button
+                  type="button"
+                  className={camPreset === "step" ? "active" : ""}
+                  onClick={() => applyCameraPreset("step")}
+                >
+                  <Camera size={12} /> Step Focus
+                </button>
+                <button
+                  type="button"
+                  className={camPreset === "front" ? "active" : ""}
+                  onClick={() => applyCameraPreset("front")}
+                >
+                  Front Ortho
+                </button>
+                <button
+                  type="button"
+                  className={camPreset === "macro" ? "active" : ""}
+                  onClick={() => applyCameraPreset("macro")}
+                >
+                  Macro Joint
+                </button>
+                <button
+                  type="button"
+                  className={camPreset === "iso" ? "active" : ""}
+                  onClick={() => applyCameraPreset("iso")}
+                >
+                  Room Iso
+                </button>
+              </div>
+            </>
           )}
           <div className="scene-utilities">
             {style !== "2d" && (
               <button
                 className="glass-icon-button"
-                onClick={() => engine?.resetCamera()}
+                onClick={() => applyCameraPreset("step")}
                 aria-label="Reset 3D camera"
                 title="Reset camera (R)"
               >
@@ -275,13 +411,17 @@ export function GuidePlayer({ guide, onPrint, onExport }: GuidePlayerProps) {
             </button>
           </div>
           <div className="orbit-hint">
-            {style === "2d" ? (
+            {voiceControl ? (
               <>
-                <Layers size={14} /> 2D Orthographic Elevation + Section A-A · Print & 1080p30 MP4 Ready
+                <Mic size={13} className="acid-text" /> {lastVoiceCmd || "Voice Control Active"}
+              </>
+            ) : style === "2d" ? (
+              <>
+                <Layers size={14} /> Scroll to zoom 2D CAD · Click hotspots A–D · 3× Loupe active
               </>
             ) : (
               <>
-                <MousePointer2 size={14} /> Drag to orbit · Pinch or scroll to zoom
+                <MousePointer2 size={14} /> Drag to orbit · Scroll to zoom · Use camera angle pills
               </>
             )}
           </div>
@@ -373,9 +513,20 @@ export function GuidePlayer({ guide, onPrint, onExport }: GuidePlayerProps) {
                 onClick={() => setNarration((value) => !value)}
                 aria-label={narration ? "Turn narration off" : "Turn narration on"}
                 aria-pressed={narration}
-                title="Narration uses your browser's speech voice"
+                title="Spoken audio narration (Web Speech API)"
               >
                 {narration ? <Volume2 size={19} /> : <VolumeX size={19} />}
+              </button>
+              <button
+                className={`icon-button ${voiceControl ? "selected" : ""}`}
+                onClick={() => setVoiceControl((value) => !value)}
+                aria-label={
+                  voiceControl ? "Disable hands-free voice commands" : "Enable hands-free voice commands"
+                }
+                aria-pressed={voiceControl}
+                title='Hands-free voice control: say "Next", "Back", "Pause", "Replay"'
+              >
+                {voiceControl ? <Mic size={18} /> : <MicOff size={18} />}
               </button>
               {onPrint && (
                 <button
@@ -423,7 +574,7 @@ export function GuidePlayer({ guide, onPrint, onExport }: GuidePlayerProps) {
         <ol className="step-list">
           {guide.steps.map((item, index) => {
             const active = index === currentStepIndex;
-            const complete = index < currentStepIndex;
+            const complete = index < currentStepIndex || checkedSteps.has(item.id);
             return (
               <li key={item.id}>
                 <button
@@ -448,10 +599,20 @@ export function GuidePlayer({ guide, onPrint, onExport }: GuidePlayerProps) {
         </ol>
 
         <div className="current-instruction" key={step.id}>
-          <p className="mono-kicker">
-            STEP {String(currentStepIndex + 1).padStart(2, "0")} /{" "}
-            {String(guide.steps.length).padStart(2, "0")}
-          </p>
+          <div className="instruction-step-row">
+            <p className="mono-kicker">
+              STEP {String(currentStepIndex + 1).padStart(2, "0")} /{" "}
+              {String(guide.steps.length).padStart(2, "0")}
+            </p>
+            <button
+              type="button"
+              className={`step-verify-btn ${isStepChecked ? "verified" : ""}`}
+              onClick={() => toggleStepCheck(step.id)}
+            >
+              <CheckCircle2 size={13} />
+              {isStepChecked ? "Completed on wall" : "Mark step done"}
+            </button>
+          </div>
           <h2>{step.title}</h2>
           <p className="instruction-lead">{step.instruction}</p>
           <details className="instruction-details">

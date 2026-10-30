@@ -4,6 +4,7 @@ import type { Guide } from "@contracts/guide";
 import type { SceneStyle } from "./WallpaperScene";
 
 export type { SceneStyle };
+export type CameraPreset = "step" | "front" | "macro" | "iso";
 
 export interface GuideEngine {
   readonly camera: THREE.PerspectiveCamera;
@@ -16,6 +17,7 @@ export interface GuideEngine {
   getStyle?(): SceneStyle;
   setSuspended(suspended: boolean): void;
   resetCamera(): void;
+  setCameraPreset?(preset: CameraPreset): void;
   captureStep(stepIndex: number, width?: number, height?: number): string;
   renderExportFrame(targetCanvas: HTMLCanvasElement, seconds: number, width: number, height: number): void;
   dispose(): void;

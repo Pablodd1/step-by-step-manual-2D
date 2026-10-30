@@ -427,13 +427,41 @@ export class PanelTrainingScene implements GuideEngine {
     this.setCamera(this.guide.steps[Math.max(0, this.currentStep)].visual.camera);
   }
 
+  setCameraPreset(preset: "step" | "front" | "macro" | "iso") {
+    if (preset === "step") {
+      this.resetCamera();
+    } else if (preset === "front") {
+      this.setCamera({ position: [0, 1.48, 3.65], target: [0, 1.42, 0] });
+    } else if (preset === "macro") {
+      this.setCamera({ position: [0.16, 1.52, 1.18], target: [0.02, 1.46, 0] });
+    } else if (preset === "iso") {
+      this.setCamera({ position: [2.85, 2.15, 3.45], target: [0, 1.38, 0] });
+    }
+  }
+
   private currentStyle: SceneStyle = "drawing";
   getStyle(): SceneStyle { return this.currentStyle; }
   setStyle(style: SceneStyle) {
     this.currentStyle = style;
-    const effective3DStyle = style === "2d" ? "drawing" : style;
+    const drawing = style === "drawing";
+    this.scene.background = new THREE.Color(drawing ? 0xefe7d8 : 0xd8d5cb);
+    this.panelGroups.forEach((group) => {
+      group.traverse((obj) => {
+        if ((obj as THREE.Mesh).isMesh && !obj.userData.hasGeneratedEdges) {
+          const mesh = obj as THREE.Mesh;
+          mesh.userData.hasGeneratedEdges = true;
+          const edges = new THREE.LineSegments(
+            new THREE.EdgesGeometry(mesh.geometry, 22),
+            new THREE.LineBasicMaterial({ color: 0x1e2822 })
+          );
+          edges.userData.outline = true;
+          edges.visible = drawing;
+          mesh.add(edges);
+        }
+      });
+    });
     this.scene.traverse((object) => {
-      if (object.userData.outline) object.visible = style === "drawing";
+      if (object.userData.outline) object.visible = drawing;
     });
   }
 
