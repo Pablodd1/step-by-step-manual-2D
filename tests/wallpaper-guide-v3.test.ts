@@ -49,6 +49,20 @@ describe("evidence-linked wallpaper guide", () => {
     expect(pasteTheWallGuide.sources.some((source) => source.publisher === "ROMAN Decorating Products")).toBe(true);
   });
 
+  it("provides a valid scenario decision and accept/recheck criteria for every step", () => {
+    for (const step of steps) {
+      expect(step.checkpoint.prompt.length).toBeGreaterThan(35);
+      expect(step.checkpoint.options).toHaveLength(3);
+      expect(new Set(step.checkpoint.options).size).toBe(3);
+      expect(step.checkpoint.answer).toBeGreaterThanOrEqual(0);
+      expect(step.checkpoint.answer).toBeLessThan(step.checkpoint.options.length);
+      expect(step.checkpoint.options[step.checkpoint.answer].length).toBeGreaterThan(20);
+      expect(step.checkpoint.feedback.length).toBeGreaterThan(40);
+      expect(step.quality.accept.length).toBeGreaterThan(30);
+      expect(step.quality.recheck.length).toBeGreaterThan(30);
+    }
+  });
+
   it("uses a finite positive animation timeline without presenting it as site duration", () => {
     const sum = steps.reduce((total, step) => total + step.seconds, 0);
     expect(totalAnimationSeconds).toBe(sum);

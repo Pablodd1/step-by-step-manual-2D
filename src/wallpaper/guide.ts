@@ -24,6 +24,18 @@ export interface EvidenceSource {
   note: string;
 }
 
+export interface StepCheckpoint {
+  prompt: string;
+  options: string[];
+  answer: number;
+  feedback: string;
+}
+
+export interface QualityCheck {
+  accept: string;
+  recheck: string;
+}
+
 export interface WallpaperStep {
   id: string;
   phase: "Prepare" | "Set out" | "Install" | "Finish";
@@ -38,6 +50,8 @@ export interface WallpaperStep {
   operation: Operation;
   seconds: number;
   evidence: string[];
+  checkpoint: StepCheckpoint;
+  quality: QualityCheck;
   requiresGate?: "electrical";
 }
 
@@ -106,6 +120,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       tools: ["Camera or phone for label records"],
       materials: ["Wallcovering rolls", "Roll labels", "Adhesive datasheet"],
       check: "Method, batch, width, repeat, match and adhesive are recorded; damaged or mismatched rolls are isolated.",
+      checkpoint: {
+        prompt: "The roll looks like the planned wallpaper, but its installation method is not visible on the label.",
+        options: [
+          "Start with paste-the-wall because the appearance matches.",
+          "Verify the roll label and adhesive datasheet before choosing the method.",
+          "Paste the back of the paper and book it as a precaution."
+        ],
+        answer: 1,
+        feedback: "Appearance is not an installation method. Confirm the product documents first."
+      },
+      quality: {
+        accept: "Method, batch, dimensions, match and adhesive records confirmed.",
+        recheck: "Method or product record is missing; stop and verify."
+      },
       operation: "verify",
       seconds: 7,
       evidence: ["roman-ptw", "demo-geometry"]
@@ -121,6 +149,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       materials: ["Outlet cover protection as appropriate"],
       check: "The required electrical gate is acknowledged before any later training step can run.",
       warning: "Do not work on a live outlet. Do not treat this animation as electrical instruction.",
+      checkpoint: {
+        prompt: "The outlet switch appears off, but safe isolation has not been verified.",
+        options: [
+          "Continue carefully because the switch looks off.",
+          "Keep adhesive away from the plate but continue cutting.",
+          "Stop until isolation and a safe outlet area are verified; use a qualified electrician if needed."
+        ],
+        answer: 2,
+        feedback: "A switch position is not verification. The later training steps remain locked until this gate is addressed."
+      },
+      quality: {
+        accept: "Relevant supply isolated and the outlet work area verified safe.",
+        recheck: "Only the switch position is known, or isolation remains uncertain."
+      },
       operation: "safety",
       seconds: 6,
       evidence: ["gb-hang", "demo-geometry"]
@@ -135,6 +177,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       tools: ["Filling knife", "Sandpaper", "Clean sponge", "Roller or brush for required primer"],
       materials: ["Suitable filler", "Specified primer or sizing when required"],
       check: "The surface is sound, smooth, clean and dry; repairs are flush; required primer or sizing is dry.",
+      checkpoint: {
+        prompt: "A filled patch is dry but still stands proud of the surrounding wall.",
+        options: [
+          "Hang over it; the pattern will hide the ridge.",
+          "Sand the repair flush, clean the surface and complete required preparation.",
+          "Add extra adhesive over the ridge."
+        ],
+        answer: 1,
+        feedback: "The substrate check requires sound, smooth, clean and dry conditions with flush repairs."
+      },
+      quality: {
+        accept: "Surface sound, smooth, clean and dry; repairs flush.",
+        recheck: "Loose material, contamination or a raised repair remains."
+      },
       operation: "prepare",
       seconds: 8,
       evidence: ["gb-hang", "roman-ptw"],
@@ -150,6 +206,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       tools: ["Tape measure", "Pencil", "Straight edge"],
       materials: ["Two rolls for pattern review"],
       check: "Start point, hanging direction, focal alignment and corner treatment are decided before paste is mixed or applied.",
+      checkpoint: {
+        prompt: "The first two drops have not been reviewed and the seam may land on the focal feature.",
+        options: [
+          "Paste the first lane now and decide at the wall.",
+          "Start in any corner and let later drops absorb the mismatch.",
+          "Dry-lay or visualize the first two drops and decide the layout before paste."
+        ],
+        answer: 2,
+        feedback: "Layout, focal alignment and corner treatment are decisions to make before adhesive is applied."
+      },
+      quality: {
+        accept: "Start point, hanging direction, focal alignment and corners planned.",
+        recheck: "Layout is undecided or the first two drops have not been reviewed."
+      },
       operation: "layout",
       seconds: 7,
       evidence: ["gb-hang"],
@@ -165,6 +235,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       tools: ["Tape measure", "Pencil", "Spirit level or plumb bob"],
       materials: ["Actual roll width from the label"],
       check: "The line is continuous, visible and vertical; the first drop will still turn into the corner as planned.",
+      checkpoint: {
+        prompt: "The corner looks straight enough to use as the first-drop edge.",
+        options: [
+          "Use the corner as the vertical reference.",
+          "Mark a true vertical from the actual roll width and planned corner allowance.",
+          "Align to the ceiling instead."
+        ],
+        answer: 1,
+        feedback: "A corner is not reliably vertical. Use a level or plumb bob and the actual product width."
+      },
+      quality: {
+        accept: "Continuous true vertical with the planned corner allowance.",
+        recheck: "The corner or ceiling is being used as an unverified reference."
+      },
       operation: "plumb",
       seconds: 8,
       evidence: ["gb-hang", "demo-geometry"],
@@ -180,6 +264,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       tools: ["Tape measure", "Pencil", "Wallpaper scissors when pre-cutting"],
       materials: ["Dry wallcovering roll"],
       check: "Drop height, pattern position and top/bottom allowance are understood before hanging.",
+      checkpoint: {
+        prompt: "The dry drop is planned at exactly the measured wall height, with no trimming allowance.",
+        options: [
+          "Keep the exact cut so no waste is produced.",
+          "Add the planned trimming allowance and follow any different product-label requirement.",
+          "Guess the allowance after the drop is on the wall."
+        ],
+        answer: 1,
+        feedback: "The actual junctions may not be level. Plan allowance before hanging and let product instructions take precedence."
+      },
+      quality: {
+        accept: "Height, pattern position and top/bottom allowance understood.",
+        recheck: "No trimming allowance, or pattern position has not been considered."
+      },
       operation: "measure",
       seconds: 7,
       evidence: ["gb-hang"],
@@ -196,6 +294,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       materials: ["Adhesive specified for the wallcovering"],
       check: "The lane is evenly coated, including all edges, without dry strips or excessive pooling.",
       warning: "Adhesive coverage, open time and mixing are product-specific. Follow the selected adhesive datasheet.",
+      checkpoint: {
+        prompt: "The roller has left an uncoated strip beside the ceiling and skirting.",
+        options: [
+          "Continue; pressure from smoothing will spread adhesive into it.",
+          "Paste the back of the dry drop to compensate.",
+          "Cut in the missed edges with a brush and restore even coverage."
+        ],
+        answer: 2,
+        feedback: "The cited sequence uses a brush where the roller misses. Do not change to paste-the-paper."
+      },
+      quality: {
+        accept: "Even lane, slightly wider than the drop, with all edges coated.",
+        recheck: "Dry strips or uncoated edges remain; do not hang yet."
+      },
       operation: "paste",
       seconds: 9,
       evidence: ["gb-hang", "roman-ptw"],
@@ -211,6 +323,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       tools: ["Stable step ladder", "Wallpaper brush or smoother"],
       materials: ["Dry paste-the-wall drop"],
       check: "The edge follows the plumb line from top to bottom, the top allowance remains, and the drop is repositionable while the adhesive permits.",
+      checkpoint: {
+        prompt: "The top allowance is correct, but the dry edge has moved away from the plumb line.",
+        options: [
+          "Continue and hide the error with the next drop.",
+          "Reposition gently while the adhesive permits and restore the plumb edge.",
+          "Trim along the plumb line immediately."
+        ],
+        answer: 1,
+        feedback: "The first plumb edge controls later drops. Correct alignment before final smoothing and trimming."
+      },
+      quality: {
+        accept: "Dry edge follows the plumb line; trimming allowance remains.",
+        recheck: "The edge has drifted or the planned allowance has been lost."
+      },
       operation: "hang",
       seconds: 9,
       evidence: ["gb-hang", "roman-ptw"],
@@ -226,6 +352,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       tools: ["Wallpaper brush or approved smoother"],
       materials: ["Clean dry cloth for tool faces"],
       check: "No bubbles, wrinkles or bridging remain; the plumb edge and corner allowance have not moved.",
+      checkpoint: {
+        prompt: "A bubble remains near the centre after smoothing.",
+        options: [
+          "Press harder across the whole drop until it disappears.",
+          "Work lightly from the centre towards the edges so air can escape.",
+          "Trim the bubble out with a knife."
+        ],
+        answer: 1,
+        feedback: "Use light centre-out strokes without stretching the wallcovering or disturbing alignment."
+      },
+      quality: {
+        accept: "Flat drop with no bubbles, wrinkles or bridging; alignment retained.",
+        recheck: "Air, wrinkles or bridging remain, or smoothing moved the edge."
+      },
       operation: "smooth",
       seconds: 8,
       evidence: ["gb-hang", "roman-ptw"],
@@ -242,6 +382,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       materials: ["Safe blade disposal container"],
       check: "Top and bottom edges are continuous and neat, with no fraying, gaps or cuts into adjacent finishes.",
       warning: "Keep hands out of the blade path and isolate electrical hazards before working near outlets.",
+      checkpoint: {
+        prompt: "The blade is dragging and the trimmed edge is beginning to fray.",
+        options: [
+          "Continue with more force.",
+          "Tear the remaining edge by hand.",
+          "Stop, use a sharp blade or suitable scissors and guide the cut along the actual junction."
+        ],
+        answer: 2,
+        feedback: "A sharp, guided cut protects the edge and adjacent finishes. Keep hands out of the blade path."
+      },
+      quality: {
+        accept: "Continuous neat junctions with no fraying, gaps or damage.",
+        recheck: "Dragging blade, frayed edge or a cut away from the actual junction."
+      },
       operation: "trim",
       seconds: 8,
       evidence: ["gb-hang"],
@@ -257,6 +411,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       tools: ["Roller and tray", "Paste brush", "Smoother", "Seam roller only if product-approved"],
       materials: ["Next dry drop", "Specified adhesive"],
       check: "The pattern matches at eye level and down the seam; there is no gap, overlap or edge lift unless the product explicitly requires it.",
+      checkpoint: {
+        prompt: "The second drop is down, but its pattern is offset and a narrow seam gap is visible.",
+        options: [
+          "Smooth harder until the mismatch disappears.",
+          "Reposition gently while adjustment is possible, then align pattern and seat the specified seam.",
+          "Overlap the first drop regardless of its label."
+        ],
+        answer: 1,
+        feedback: "Pattern and seam are corrected together while the adhesive permits adjustment; do not invent an overlap treatment."
+      },
+      quality: {
+        accept: "Pattern aligned down the seam; no unintended gap, overlap or lifted edge.",
+        recheck: "Pattern offset, seam gap or edge lift remains."
+      },
       operation: "match",
       seconds: 10,
       evidence: ["gb-hang", "roman-ptw"],
@@ -273,6 +441,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       materials: ["Clean cloth"],
       check: "The outlet area is dry, the trim is concealed by the plate, no adhesive entered the fitting, and electrical work is completed safely.",
       warning: "If safe isolation or refitting is uncertain, stop and use a qualified electrician.",
+      checkpoint: {
+        prompt: "Adhesive may have entered the outlet fitting during trimming.",
+        options: [
+          "Refit the cover immediately so the area looks finished.",
+          "Continue if the switch still appears off.",
+          "Stop and keep the area safe; use a qualified electrician where isolation or refitting is uncertain."
+        ],
+        answer: 2,
+        feedback: "The inspection requires a dry fitting with no adhesive entry. Do not conceal an unresolved electrical issue."
+      },
+      quality: {
+        accept: "Area dry, trim concealed by the plate and no adhesive in the fitting.",
+        recheck: "Adhesive entry, wetness or uncertain electrical refitting is unresolved."
+      },
       operation: "outlet",
       seconds: 8,
       evidence: ["gb-hang", "demo-geometry"],
@@ -288,6 +470,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       tools: ["Clean damp cloth or sponge", "Bucket of clean water"],
       materials: ["Replacement clean water as needed"],
       check: "Face, seams, ceiling, skirting and tools are free of visible adhesive, with no overwetting or surface damage.",
+      checkpoint: {
+        prompt: "A small adhesive trace remains at a seam and is beginning to dry.",
+        options: [
+          "Scrub firmly with the wettest sponge available.",
+          "Leave it until the whole wall is complete.",
+          "Lift it gently with a suitable clean damp cloth, rinsing and wringing frequently."
+        ],
+        answer: 2,
+        feedback: "Remove residue before it dries without flooding or abrading the wallcovering face."
+      },
+      quality: {
+        accept: "Face, seams and adjacent finishes clean, without overwetting or damage.",
+        recheck: "Visible residue, scrub damage or excessive moisture remains."
+      },
       operation: "clean",
       seconds: 8,
       evidence: ["gb-hang", "roman-pro838"],
@@ -303,6 +499,20 @@ export const pasteTheWallGuide: WallpaperGuide = {
       tools: ["Inspection light when appropriate", "Camera or phone"],
       materials: ["Product labels and site record"],
       check: "All listed defects are checked, any issue is recorded before further work, and the completed area is left clean.",
+      checkpoint: {
+        prompt: "The wall looks straight in a front view, but seams and edges have not been checked in low-angle light or recorded.",
+        options: [
+          "Accept it from the front view alone.",
+          "Inspect normal and low-angle views, check every listed defect and photograph the result with product records.",
+          "Only photograph the wall; no further inspection is needed."
+        ],
+        answer: 1,
+        feedback: "Final acceptance is a structured inspection and record, not a single attractive camera view."
+      },
+      quality: {
+        accept: "All listed defects checked, issues recorded and product traceability retained.",
+        recheck: "Inspection or records are incomplete; an attractive front view is not enough."
+      },
       operation: "inspect",
       seconds: 8,
       evidence: ["gb-hang", "demo-geometry"],
