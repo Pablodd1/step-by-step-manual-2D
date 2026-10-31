@@ -20,34 +20,17 @@
   line-height: 1.55;
   color-scheme: dark;
 }
-
 .wallpaper-app *, .wallpaper-app *::before, .wallpaper-app *::after { box-sizing: border-box; }
 .wallpaper-app button, .wallpaper-app input, .wallpaper-app select { font: inherit; }
 .wallpaper-app button, .wallpaper-app a, .wallpaper-app input, .wallpaper-app select { -webkit-tap-highlight-color: transparent; }
 .wallpaper-app button { cursor: pointer; }
 .wallpaper-app button:disabled { cursor: not-allowed; opacity: .38; }
-.wallpaper-app button:focus-visible, .wallpaper-app a:focus-visible, .wallpaper-app input:focus-visible, .wallpaper-app select:focus-visible {
-  outline: 2px solid var(--wp-cyan);
-  outline-offset: 3px;
-}
+.wallpaper-app button:focus-visible, .wallpaper-app a:focus-visible, .wallpaper-app input:focus-visible, .wallpaper-app select:focus-visible { outline: 2px solid var(--wp-cyan); outline-offset: 3px; }
 .wallpaper-app ::selection { color: #050810; background: #fee420; }
 .wallpaper-app .skip-link { position: fixed; top: -80px; left: 16px; z-index: 20; padding: 12px 18px; color: #050810; background: var(--wp-cyan); }
 .wallpaper-app .skip-link:focus { top: 12px; }
-.ui-label, .training-breadcrumb, .phase-label, .timeline-labels, .source-level, .drawing-figure, .drawing-note {
-  font-family: "JetBrains Mono", monospace;
-  letter-spacing: .11em;
-  text-transform: uppercase;
-}
-
-.training-topbar {
-  height: 52px;
-  display: flex;
-  align-items: center;
-  gap: 28px;
-  padding: 0 20px;
-  border-bottom: 1px solid var(--wp-border);
-  background: #070b14;
-}
+.ui-label, .training-breadcrumb, .phase-label, .timeline-labels, .source-level, .drawing-figure, .drawing-note { font-family: "JetBrains Mono", monospace; letter-spacing: .11em; text-transform: uppercase; }
+.training-topbar { height: 52px; display: flex; align-items: center; gap: 28px; padding: 0 20px; border-bottom: 1px solid var(--wp-border); background: #070b14; }
 .training-brand { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
 .training-brand strong { font-family: "JetBrains Mono", monospace; font-size: 17px; letter-spacing: .16em; }
 .training-brand > span:last-child { padding-left: 10px; border-left: 1px solid var(--wp-border); color: var(--wp-muted); font: 10px "JetBrains Mono", monospace; letter-spacing: .12em; }
@@ -59,42 +42,14 @@
 .training-breadcrumb { color: var(--wp-muted); font-size: 10px; }
 .training-breadcrumb span { padding: 0 8px; color: #42516a; }
 .topbar-actions { display: flex; gap: 8px; margin-left: auto; }
-.text-button {
-  min-height: 36px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 7px 11px;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  color: var(--wp-text);
-  background: transparent;
-  transition: border-color .18s ease, background .18s ease, color .18s ease;
-}
+.text-button { min-height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 7px 11px; border: 1px solid transparent; border-radius: 4px; color: var(--wp-text); background: transparent; transition: border-color .18s ease, background .18s ease, color .18s ease; }
 .text-button:hover { border-color: var(--wp-border); background: var(--wp-raised); color: var(--wp-cyan); }
-
-.training-productbar {
-  min-height: 82px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 13px 20px;
-  border-bottom: 1px solid var(--wp-border);
-  background: var(--wp-panel);
-}
+.training-productbar { min-height: 82px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 13px 20px; border-bottom: 1px solid var(--wp-border); background: var(--wp-panel); }
 .training-productbar .ui-label { color: var(--wp-muted); font-size: 9px; }
 .training-productbar h1 { margin: 2px 0 0; font-size: 23px; line-height: 1.2; letter-spacing: -.025em; }
 .productbar-status { display: flex; align-items: center; gap: 18px; color: var(--wp-muted); font: 10px "JetBrains Mono", monospace; text-transform: uppercase; letter-spacing: .05em; }
 .status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid #69531d; border-radius: 3px; color: var(--wp-amber); background: #211b0d; }
-
-.training-grid {
-  height: calc(100dvh - 170px);
-  min-height: 600px;
-  display: grid;
-  grid-template-columns: 218px minmax(360px, 1fr) 390px;
-}
+.training-grid { height: calc(100dvh - 170px); min-height: 600px; display: grid; grid-template-columns: 218px minmax(360px, 1fr) 390px; }
 .step-rail { min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--wp-border); background: #080d17; overflow: hidden; }
 .rail-heading { display: flex; justify-content: space-between; align-items: center; padding: 15px 13px 12px; border-bottom: 1px solid var(--wp-border); }
 .rail-heading .ui-label { font-size: 10px; }
@@ -102,23 +57,7 @@
 .step-rail ol { flex: 1; margin: 0; padding: 8px 7px 16px; list-style: none; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #293750 transparent; }
 .step-rail li { margin: 0; }
 .phase-label { display: block; padding: 13px 9px 5px; color: #718198; font-size: 9px; }
-.step-rail li button {
-  position: relative;
-  width: 100%;
-  min-height: 37px;
-  display: grid;
-  grid-template-columns: 28px 1fr 16px;
-  align-items: center;
-  gap: 5px;
-  padding: 7px 8px;
-  border: 1px solid transparent;
-  border-radius: 3px;
-  color: #a8b4c2;
-  background: transparent;
-  text-align: left;
-  font-size: 12px;
-  transition: color .16s ease, background .16s ease, border-color .16s ease;
-}
+.step-rail li button { position: relative; width: 100%; min-height: 37px; display: grid; grid-template-columns: 28px 1fr 16px; align-items: center; gap: 5px; padding: 7px 8px; border: 1px solid transparent; border-radius: 3px; color: #a8b4c2; background: transparent; text-align: left; font-size: 12px; transition: color .16s ease, background .16s ease, border-color .16s ease; }
 .step-rail li button:hover { color: var(--wp-text); background: #101827; }
 .step-rail li button.active { color: var(--wp-text); border-color: #27526a; background: #102536; }
 .step-rail li button.active::before { content: ""; position: absolute; left: -1px; top: 7px; bottom: 7px; width: 2px; background: var(--wp-cyan); }
@@ -129,7 +68,6 @@
 .rail-source-note { display: flex; gap: 9px; padding: 13px; border-top: 1px solid var(--wp-border); color: var(--wp-muted); }
 .rail-source-note svg { flex: 0 0 auto; color: var(--wp-green); }
 .rail-source-note p { margin: 0; font-size: 11px; line-height: 1.45; }
-
 .stage-column { min-width: 0; min-height: 0; display: grid; grid-template-rows: 46px minmax(0, 1fr) 106px; background: var(--wp-panel); }
 .stage-toolbar { display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-bottom: 1px solid var(--wp-border); }
 .view-switch { display: flex; padding: 2px; border: 1px solid var(--wp-border); border-radius: 4px; }
@@ -138,20 +76,7 @@
 .stage-step-readout { min-width: 0; display: flex; align-items: center; gap: 10px; margin-left: auto; }
 .stage-step-readout span { color: var(--wp-cyan); font: 9px "JetBrains Mono", monospace; letter-spacing: .08em; }
 .stage-step-readout strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
-.icon-button {
-  width: 36px;
-  height: 36px;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid var(--wp-border);
-  border-radius: 4px;
-  color: var(--wp-text);
-  background: #0d1524;
-  transition: color .16s ease, border-color .16s ease, background .16s ease, transform .12s ease;
-}
+.icon-button { width: 36px; height: 36px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--wp-border); border-radius: 4px; color: var(--wp-text); background: #0d1524; transition: color .16s ease, border-color .16s ease, background .16s ease, transform .12s ease; }
 .icon-button:hover:not(:disabled), .icon-button.active { color: var(--wp-cyan); border-color: #2e6d80; background: #102536; }
 .icon-button:active:not(:disabled) { transform: scale(.96); }
 .scene-host { position: relative; min-height: 0; overflow: hidden; background: #0c1220; }
@@ -174,7 +99,6 @@
 .play-button:active { transform: scale(.96); }
 .speed-control { display: flex; align-items: center; gap: 7px; color: var(--wp-muted); font-size: 10px; }
 .speed-control select { padding: 5px 22px 5px 7px; border: 1px solid var(--wp-border); border-radius: 3px; color: var(--wp-text); background: #0d1524; }
-
 .instruction-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; border-left: 1px solid var(--wp-border); background: #0a101c; }
 .manual-figure { display: block; width: 100%; padding: 0; border: 0; border-bottom: 1px solid var(--wp-border); color: #26343a; background: #f7f6f1; text-align: left; }
 .manual-heading { height: 30px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #d3d4ce; color: #526168; font: 8px "JetBrains Mono", monospace; letter-spacing: .1em; }
@@ -217,11 +141,9 @@
 .instruction-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--wp-border); background: #080e18; }
 .next-step-button { min-height: 38px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 8px 12px; border: 0; border-radius: 4px; color: #06130f; background: var(--wp-green); font-weight: 600; font-size: 12px; }
 .next-step-button:hover:not(:disabled) { background: #6de2b5; }
-
 .training-disclaimer { min-height: 36px; display: flex; align-items: center; gap: 8px; padding: 7px 16px; border-top: 1px solid #4f421e; color: #d6c99f; background: #17150d; font-size: 10px; }
 .training-disclaimer svg { flex: 0 0 auto; color: var(--wp-amber); }
 .training-disclaimer button { margin-left: auto; padding: 2px 0; border: 0; border-bottom: 1px solid #8b7b49; color: var(--wp-text); background: transparent; white-space: nowrap; font-size: 10px; }
-
 .evidence-dialog { width: min(760px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); padding: 0; border: 1px solid #2a3a55; border-radius: 6px; color: var(--wp-text); background: #0a101c; box-shadow: 0 24px 100px #000a; }
 .evidence-dialog::backdrop { background: #02050bdb; backdrop-filter: blur(4px); }
 .evidence-dialog-inner { padding: 22px; }
@@ -241,14 +163,40 @@
 .source-register a { display: inline-flex; align-items: center; gap: 5px; color: var(--wp-cyan); font-size: 11px; text-decoration: none; }
 .source-register a:hover { text-decoration: underline; }
 .wallpaper-print-sheet { display: none; }
-
+.learning-check { padding-top: 16px; border-top: 1px solid var(--wp-border); }
+.quality-comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.quality-card { min-width: 0; margin: 0; overflow: hidden; border: 1px solid var(--wp-border); border-radius: 4px; background: #f5f3ed; }
+.quality-card figcaption { display: flex; align-items: center; gap: 5px; min-height: 28px; padding: 5px 7px; color: #dce6e2; background: #123a31; font: 8px "JetBrains Mono", monospace; letter-spacing: .06em; text-transform: uppercase; }
+.quality-card.recheck figcaption { color: #f7dfd9; background: #49241f; }
+.quality-card svg { display: block; width: 100%; height: 92px; }
+.quality-card p { min-height: 54px; margin: 0; padding: 7px; color: #33434a; background: #f5f3ed; font-size: 10px; line-height: 1.4; }
+.quality-comparison > small { grid-column: 1 / -1; color: #6f8093; font: 7px "JetBrains Mono", monospace; letter-spacing: .06em; text-align: right; text-transform: uppercase; }
+.checkpoint-heading { display: flex; align-items: center; gap: 7px; margin-top: 20px; color: var(--wp-cyan); }
+.checkpoint-heading h3 { margin: 0; color: #a9b8c7; }
+.checkpoint-heading > span { margin-left: auto; color: #78889c; font: 7px "JetBrains Mono", monospace; letter-spacing: .04em; text-transform: uppercase; }
+.checkpoint-prompt { margin: 9px 0 11px; color: var(--wp-text); font-size: 12px; font-weight: 600; line-height: 1.55; }
+.checkpoint-options { display: grid; gap: 6px; }
+.checkpoint-options button { width: 100%; min-height: 42px; display: grid; grid-template-columns: 24px 1fr 16px; align-items: center; gap: 7px; padding: 8px; border: 1px solid var(--wp-border); border-radius: 4px; color: #bac6d1; background: #0d1625; text-align: left; font-size: 11px; line-height: 1.45; }
+.checkpoint-options button:hover { border-color: #356178; color: var(--wp-text); background: #112033; }
+.checkpoint-options button.chosen { border-color: #2f758b; }
+.checkpoint-options button.correct { border-color: #28634f; color: #d0e7dd; background: #0d251f; }
+.checkpoint-options button.incorrect { border-color: #79453f; color: #efcfca; background: #2a1716; }
+.checkpoint-options button > svg { color: var(--wp-green); }
+.checkpoint-options button.incorrect > svg { color: var(--wp-red); }
+.option-letter { width: 23px; height: 23px; display: grid; place-items: center; border: 1px solid #2c3b50; border-radius: 3px; color: #8ea0b4; font: 9px "JetBrains Mono", monospace; }
+.checkpoint-feedback { display: flex; align-items: flex-start; gap: 8px; margin-top: 9px; padding: 10px; border-left: 2px solid var(--wp-green); color: var(--wp-green); background: #0c211c; }
+.checkpoint-feedback.incorrect { border-color: var(--wp-amber); color: var(--wp-amber); background: #211b0e; }
+.checkpoint-feedback > svg { flex: 0 0 auto; margin-top: 2px; }
+.checkpoint-feedback strong { font-size: 11px; }
+.checkpoint-feedback p { margin: 3px 0 0; color: #bed1c8; font-size: 11px; line-height: 1.5; }
+.checkpoint-feedback.incorrect p { color: #d9cba9; }
+.checkpoint-feedback small { display: block; margin-top: 4px; color: #9da98e; font-size: 9px; }
 @media (max-width: 1180px) {
   .training-grid { grid-template-columns: 184px minmax(330px, 1fr) 350px; }
   .step-rail li button { font-size: 11px; }
   .productbar-status > span:not(.status-badge) { display: none; }
   .instruction-scroll { padding-inline: 15px; }
 }
-
 @media (max-width: 920px) {
   .training-grid { height: auto; min-height: 0; grid-template-columns: 176px minmax(0, 1fr); }
   .stage-column { min-height: 610px; }
@@ -259,7 +207,6 @@
   .instruction-footer { grid-column: 1 / -1; }
   .training-disclaimer { flex-wrap: wrap; }
 }
-
 @media (max-width: 680px) {
   .training-topbar { height: 54px; padding: 0 12px; gap: 10px; }
   .training-brand > span:last-child, .training-breadcrumb { display: none; }
@@ -276,10 +223,11 @@
   .phase-label, .rail-source-note, .step-check { display: none; }
   .step-rail li button { width: auto; min-height: 44px; grid-template-columns: 22px auto; padding: 7px 10px; border-color: var(--wp-border); font-size: 11px; }
   .step-rail li button.active::before { display: none; }
-  .stage-column { order: 2; min-height: 530px; grid-template-rows: 48px 360px 112px; }
+  .stage-column { order: 2; min-height: 530px; grid-template-rows: 58px 360px 112px; }
   .stage-toolbar { padding-inline: 9px; }
   .stage-step-readout strong { max-width: 105px; }
-  .view-switch button { min-height: 34px; }
+  .view-switch button { min-height: 44px; }
+  .training-disclaimer button { min-height: 44px; display: inline-flex; align-items: center; }
   .stage-toolbar .icon-button, .playback-panel .icon-button { width: 44px; height: 44px; }
   .play-button { width: 48px; height: 44px; }
   .scene-legend { flex-direction: column; gap: 3px; }
@@ -297,11 +245,9 @@
   .training-disclaimer button { margin-left: 22px; }
   .evidence-dialog-inner { padding: 16px; }
 }
-
 @media (prefers-reduced-motion: reduce) {
   .wallpaper-app *, .wallpaper-app *::before, .wallpaper-app *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
-
 @media print {
   @page { size: A4; margin: 12mm; }
   body { background: white !important; }

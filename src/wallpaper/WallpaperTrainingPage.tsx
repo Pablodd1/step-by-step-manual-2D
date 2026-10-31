@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { WallpaperScene } from "./WallpaperScene";
 import { ReferenceDrawing } from "./ReferenceDrawing";
+import { LearningCheck } from "./LearningCheck";
 import {
   canAccessStep,
   getSource,
@@ -102,6 +103,8 @@ function PrintFieldSheet() {
             <p>{step.instruction}</p>
             <p><strong>Tools:</strong> {step.tools.join(", ")}</p>
             <p><strong>Inspection:</strong> {step.check}</p>
+            <p><strong>Accept:</strong> {step.quality.accept} <strong>Recheck:</strong> {step.quality.recheck}</p>
+            <p><strong>Decision check:</strong> {step.checkpoint.prompt}<br /><strong>Answer:</strong> {step.checkpoint.options[step.checkpoint.answer]}</p>
             {step.warning && <p><strong>Warning:</strong> {step.warning}</p>}
             <small>Evidence: {step.evidence.map((id) => getSource(id).publisher).join("; ")}</small>
           </article>
@@ -114,6 +117,7 @@ function PrintFieldSheet() {
 
 export default function WallpaperTrainingPage() {
   const hostRef = useRef<HTMLDivElement>(null);
+  const instructionScrollRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<WallpaperScene | null>(null);
   const progressRef = useRef(0);
   const [current, setCurrent] = useState(0);
@@ -126,6 +130,7 @@ export default function WallpaperTrainingPage() {
   const [gateNotice, setGateNotice] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
+  const [answers, setAnswers] = useState<Record<string, number>>({});
   const step = steps[current];
 
   const setProgress = useCallback((value: number) => {
@@ -154,6 +159,10 @@ export default function WallpaperTrainingPage() {
   useEffect(() => {
     sceneRef.current?.setView(view);
   }, [view, sceneReady]);
+
+  useEffect(() => {
+    if (instructionScrollRef.current) instructionScrollRef.current.scrollTop = 0;
+  }, [current]);
 
   useEffect(() => {
     if (!playing) return;
@@ -247,6 +256,7 @@ export default function WallpaperTrainingPage() {
   };
 
   const completedPhases = useMemo(() => new Set(steps.slice(0, current).map((item) => item.phase)).size, [current]);
+  const correctChecks = useMemo(() => steps.filter((item) => answers[item.id] === item.checkpoint.answer).length, [answers]);
 
   return (
     <div className="wallpaper-app">
@@ -267,13 +277,13 @@ export default function WallpaperTrainingPage() {
         </div>
         <div className="productbar-status">
           <span className="status-badge"><AlertTriangle size={14} /> General guidance</span>
-          <span>14 steps</span><span>4 phases</span><span>Reconstructed 3D</span>
+          <span>14 steps</span><span>14 scenario checks</span><span>Reconstructed 3D</span>
         </div>
       </section>
 
       <main className="training-grid">
         <aside className="step-rail" aria-label="Installation steps">
-          <div className="rail-heading"><span className="ui-label">Sequence</span><span>{completedPhases}/4 phases visited</span></div>
+          <div className="rail-heading"><span className="ui-label">Sequence</span><span title={`${completedPhases} of 4 phases visited`}>{correctChecks}/14 checks</span></div>
           <ol>
             {steps.map((item, index) => {
               const locked = !canAccessStep(index, electricalCleared);
@@ -296,8 +306,8 @@ export default function WallpaperTrainingPage() {
         <section className="stage-column" aria-label="Interactive 3D demonstration">
           <div className="stage-toolbar">
             <div className="view-switch" aria-label="Camera view">
-              <button className={view === "room" ? "selected" : ""} onClick={() => setView("room")}>Room</button>
-              <button className={view === "drawing" ? "selected" : ""} onClick={() => setView("drawing")}>Front</button>
+              <button className={view === "room" ? "selected" : ""} onClick={() => setView("room")} aria-pressed={view === "room"}>Room</button>
+              <button className={view === "drawing" ? "selected" : ""} onClick={() => setView("drawing")} aria-pressed={view === "drawing"}>Front</button>
             </div>
             <div className="stage-step-readout"><span>STEP {String(current + 1).padStart(2, "0")}</span><strong>{step.shortTitle}</strong></div>
             <button className="icon-button" onClick={() => sceneRef.current?.resetCamera(step.operation)} title="Reset camera" aria-label="Reset camera"><RotateCcw size={17} /></button>
@@ -327,7 +337,7 @@ export default function WallpaperTrainingPage() {
             <div className="manual-heading"><span>REFERENCE DRAWING</span><span><Play size={12} /> Replay</span></div>
             <ReferenceDrawing step={step} number={current + 1} />
           </button>
-          <div className="instruction-scroll">
+          <div className="instruction-scroll" ref={instructionScrollRef}>
             <div className="instruction-meta"><span>{step.phase}</span><span>Step {current + 1} of {steps.length}</span></div>
             <h2>{step.title}</h2>
             <p className="instruction-lead">{step.instruction}</p>
@@ -345,6 +355,7 @@ export default function WallpaperTrainingPage() {
 
             <section className="instruction-section"><h3>Tools and materials</h3><ul className="tool-list">{[...step.tools, ...step.materials].map((item) => <li key={item}>{item}</li>)}</ul></section>
             <section className="instruction-section inspection-check"><h3>Inspect before moving on</h3><p>{step.check}</p></section>
+            <LearningCheck step={step} selected={answers[step.id]} onAnswer={(answer) => setAnswers((currentAnswers) => ({ ...currentAnswers, [step.id]: answer }))} />
             <section className="instruction-section evidence-links"><h3>Evidence for this step</h3>{step.evidence.map((id) => {
               const source = getSource(id);
               return source.url ? <a key={id} href={source.url} target="_blank" rel="noreferrer"><span>{source.publisher}<small>{sourceLevel[source.level]}</small></span><ExternalLink size={14} /></a> : <div key={id}><span>{source.publisher}<small>{sourceLevel[source.level]}</small></span></div>;
