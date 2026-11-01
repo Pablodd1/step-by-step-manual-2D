@@ -33,6 +33,9 @@ import {
 import { SiteHeader } from "@/components/SiteHeader";
 import { BuilderFigure, ManualToolArt, resolveManualToolKind } from "@/components/ManualLineArt";
 import { TaskSimulatorScene, type SimulatorViewMode } from "@/scene/TaskSimulatorScene";
+import { LearningCheck } from "@/wallpaper/LearningCheck";
+import { pasteTheWallGuide } from "@/wallpaper/guide";
+import "@/wallpaper/wallpaper.css";
 import {
   BLUEPRINT_TRACKS,
   DONT_GUESS_CONFLICTS,
@@ -134,7 +137,11 @@ export default function TaskSimulatorPage() {
   const [showMacro, setShowMacro] = useState(() => params.get("macro") !== "0");
   const [exploded, setExploded] = useState(() => params.get("exploded") === "1");
   const [showManual, setShowManual] = useState(() => params.get("manual") === "1");
-  const [safetyCleared, setSafetyCleared] = useState<Record<string, boolean>>({});
+  const [safetyCleared, setSafetyCleared] = useState<Record<string, boolean>>(() => {
+    const startStep = Number(params.get("bstep") ?? params.get("step") ?? 10);
+    return startStep > 1 ? { "elec-lockout": true } : ({} as Record<string, boolean>);
+  });
+  const [scenarioAnswers, setScenarioAnswers] = useState<Record<string, number>>({});
   const [activeTab, setActiveTab] = useState<"sheets" | "video" | "calc" | "schema" | "links">("calc");
 
   // Live Roll & Pattern Calculator state (side-by-side Formula A vs Formula B)
@@ -260,6 +267,16 @@ export default function TaskSimulatorPage() {
 
   const stepNext = useCallback(() => {
     setPlaying(false);
+    if (
+      playerMode === "demo12" &&
+      demoCursor === 1 &&
+      activeBlueprintStep.safetyGate &&
+      !safetyCleared[activeBlueprintStep.safetyGate.id]
+    ) {
+      setFeedback("Safety Gate Locked: Confirm electrical breaker lockout on Step 1 before advancing to wet work.");
+      window.setTimeout(() => setFeedback(""), 4000);
+      return;
+    }
     if (playerMode === "demo12") {
       setDemoCursor((c) => Math.min(12, c + 1));
       setStepProgress(0.62);
@@ -267,7 +284,7 @@ export default function TaskSimulatorPage() {
       setFullIdx((i) => Math.min(35, i + 1));
       setStepProgress(0.62);
     }
-  }, [playerMode]);
+  }, [playerMode, demoCursor, activeBlueprintStep, safetyCleared]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -865,6 +882,25 @@ export default function TaskSimulatorPage() {
                 </button>
               </div>
             </div>
+
+            {/* Integrated Kimi Field Quality Comparison ("Accept when" vs "Stop + recheck") & Interactive Scenario Check */}
+            {!isPartsTray && (() => {
+              const guideMap = [1, 0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+              const mappedIdx =
+                playerMode === "demo12"
+                  ? (guideMap[Math.max(0, Math.min(11, (demoCursor || 1) - 1))] ?? 0)
+                  : Math.min(pasteTheWallGuide.steps.length - 1, Math.floor((fullIdx / 36) * pasteTheWallGuide.steps.length));
+              const checkStep = pasteTheWallGuide.steps[mappedIdx];
+              return (
+                <div className="sim-integrated-learning-check wallpaper-app" style={{ minHeight: 0, padding: "14px 18px", borderTop: "2px dashed #141414" }}>
+                  <LearningCheck
+                    step={checkStep}
+                    selected={scenarioAnswers[checkStep.id]}
+                    onAnswer={(ans) => setScenarioAnswers((prev) => ({ ...prev, [checkStep.id]: ans }))}
+                  />
+                </div>
+              );
+            })()}
           </div>
         </section>
 

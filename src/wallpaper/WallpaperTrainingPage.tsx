@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router";
 import {
   AlertTriangle,
   BookOpen,
+  Box,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -15,8 +17,10 @@ import {
   ShieldCheck,
   SkipBack,
   SkipForward,
-  X
+  X,
+  ZoomIn
 } from "lucide-react";
+import { ManualToolArt, resolveManualToolKind } from "../components/ManualLineArt";
 import { WallpaperScene } from "./WallpaperScene";
 import { ReferenceDrawing } from "./ReferenceDrawing";
 import { LearningCheck } from "./LearningCheck";
@@ -116,17 +120,34 @@ function PrintFieldSheet() {
 }
 
 export default function WallpaperTrainingPage() {
+  const [params] = useSearchParams();
   const hostRef = useRef<HTMLDivElement>(null);
   const instructionScrollRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<WallpaperScene | null>(null);
-  const progressRef = useRef(0);
-  const [current, setCurrent] = useState(0);
-  const [progress, setProgressState] = useState(0);
+
+  const initialGate = params.get("gate") === "1" || Number(params.get("step")) > 2;
+  const initialStep = useMemo(() => {
+    const raw = Number(params.get("step"));
+    if (!Number.isFinite(raw) || raw < 1) return 0;
+    const idx = Math.max(0, Math.min(steps.length - 1, Math.floor(raw) - 1));
+    return canAccessStep(idx, initialGate) ? idx : 1;
+  }, [params, initialGate]);
+  const initialProgress = useMemo(() => {
+    const raw = Number(params.get("progress") ?? params.get("at"));
+    return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : 0;
+  }, [params]);
+
+  const progressRef = useRef(initialProgress);
+  const [current, setCurrent] = useState(initialStep);
+  const [progress, setProgressState] = useState(initialProgress);
   const [playing, setPlaying] = useState(false);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [speed, setSpeed] = useState(1);
-  const [view, setView] = useState<"room" | "drawing">("room");
-  const [electricalCleared, setElectricalCleared] = useState(false);
+  const [view, setView] = useState<"room" | "drawing">(() =>
+    params.get("view") === "drawing" || params.get("view") === "cad" ? "drawing" : "room"
+  );
+  const [showLoupe, setShowLoupe] = useState(() => params.get("loupe") !== "0");
+  const [electricalCleared, setElectricalCleared] = useState(initialGate);
   const [gateNotice, setGateNotice] = useState(false);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
@@ -159,6 +180,10 @@ export default function WallpaperTrainingPage() {
   useEffect(() => {
     sceneRef.current?.setView(view);
   }, [view, sceneReady]);
+
+  useEffect(() => {
+    sceneRef.current?.setShowLoupe(showLoupe);
+  }, [showLoupe, sceneReady]);
 
   useEffect(() => {
     if (instructionScrollRef.current) instructionScrollRef.current.scrollTop = 0;
@@ -265,6 +290,7 @@ export default function WallpaperTrainingPage() {
         <div className="training-brand"><span className="training-brand-mark" aria-hidden="true"><i /><i /><i /></span><strong>PLUMB</strong><span>FIELD TRAINING</span></div>
         <div className="training-breadcrumb">WALLCOVERINGS <span>/</span> PASTE THE WALL</div>
         <div className="topbar-actions">
+          <Link className="text-button" to="/simulator"><Box size={16} /> 3-Track CAD Simulator</Link>
           <button className="text-button" onClick={() => setEvidenceOpen(true)}><BookOpen size={16} /> Evidence</button>
           <button className="text-button" onClick={() => window.print()}><Printer size={16} /> Field sheet</button>
         </div>
@@ -272,12 +298,12 @@ export default function WallpaperTrainingPage() {
 
       <section className="training-productbar">
         <div>
-          <span className="ui-label">Interactive installation lesson / v3</span>
+          <span className="ui-label">Interactive installation lesson / v3 + CAD shader pipeline</span>
           <h1>{pasteTheWallGuide.title}</h1>
         </div>
         <div className="productbar-status">
           <span className="status-badge"><AlertTriangle size={14} /> General guidance</span>
-          <span>14 steps</span><span>14 scenario checks</span><span>Reconstructed 3D</span>
+          <span>14 steps</span><span>14 scenario checks</span><span>CAD + 3.5× Loupe</span>
         </div>
       </section>
 
@@ -307,15 +333,32 @@ export default function WallpaperTrainingPage() {
           <div className="stage-toolbar">
             <div className="view-switch" aria-label="Camera view">
               <button className={view === "room" ? "selected" : ""} onClick={() => setView("room")} aria-pressed={view === "room"}>Room</button>
-              <button className={view === "drawing" ? "selected" : ""} onClick={() => setView("drawing")} aria-pressed={view === "drawing"}>Front</button>
+              <button className={view === "drawing" ? "selected" : ""} onClick={() => setView("drawing")} aria-pressed={view === "drawing"} title="Switch to 4-band Cel + Fat Ink CAD Line-Art Shader">Front</button>
             </div>
+            <button
+              className={`icon-button ${showLoupe ? "active" : ""}`}
+              onClick={() => setShowLoupe((v) => !v)}
+              title="Toggle 3.5× Circular Magnifying Detail Loupe"
+              aria-label="Toggle 3.5x detail loupe"
+              aria-pressed={showLoupe}
+            >
+              <ZoomIn size={16} />
+            </button>
             <div className="stage-step-readout"><span>STEP {String(current + 1).padStart(2, "0")}</span><strong>{step.shortTitle}</strong></div>
             <button className="icon-button" onClick={() => sceneRef.current?.resetCamera(step.operation)} title="Reset camera" aria-label="Reset camera"><RotateCcw size={17} /></button>
           </div>
           <div className="scene-host" ref={hostRef}>
             {!sceneReady && <div className="scene-loading">Preparing the training wall…</div>}
             <div className="scene-legend"><span><i className="legend-cyan" /> Adhesive / set-out</span><span><i className="legend-paper" /> Dry wallcovering</span></div>
-            <div className="scene-orbit-note">Drag to orbit • Scroll to zoom</div>
+            <div className="wp-tool-corner-card" aria-label="Active step tools">
+              {step.tools.slice(0, 2).map((toolName) => (
+                <div key={toolName} className="wp-tool-corner-row">
+                  <ManualToolArt kind={resolveManualToolKind(toolName)} size={36} />
+                  <span>{toolName}</span>
+                </div>
+              ))}
+            </div>
+            <div className="scene-orbit-note">Drag to orbit • Scroll to zoom • 3.5× detail loupe tracks active work point</div>
           </div>
           <div className="playback-panel">
             <div className="timeline-labels"><span>ANIMATION TIMELINE</span><output>{formatTime(globalTime)} / {formatTime(totalAnimationSeconds)}</output></div>
