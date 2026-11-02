@@ -27,7 +27,12 @@ This GitHub repository is currently a **frontend-only React/Vite application**.
 - `src/lib/trpc.ts` is a browser-local demo adapter, not tRPC or server persistence.
 - Browser `localStorage` profiles, uploads and review states are demonstrations only. They do not synchronize across devices and are not a production moderation or asset-storage system.
 - Scenario answers in the new wallpaper lesson are React session state and are not presented as backend progress records.
-- The new wallpaper module has scene-matched browser printing. It is **not yet connected to deterministic HD video export**.
+- The wallpaper lesson exports a **deterministic 1080p30 H.264 MP4** (per step or the complete lesson, Realistic or CAD style) with burned-in captions, the safety warning, the disclaimer and the 3.5× detail loupe, plus a timed **WebVTT subtitle file**. Frames are rendered one by one at exact times, not recorded live. The MP4 is **silent**: browser speech synthesis cannot be written into a file. A live **Narrate** toggle speaks the same text in the player.
+- Video steps are paced so their text can be read or narrated (~150 words per minute estimate). The 14 steps animate for 111 s but need about 5 min to read, so the exported video is longer than the interactive timeline.
+- The **Field sheet** print now embeds a CAD illustration of every step rendered from the same 3D scene.
+- Export was verified in desktop Chrome with `ffprobe`/frame extraction on steps 1, 10 and 12. It is **not** verified in Firefox, Safari or Edge, and a full 14-step export has not been run end to end.
+- Realism is procedural (Three.js geometry, canvas textures, image-based lighting, a timber floor). It is a reconstructed training illustration, not photographic footage and not a manufacturer-approved demonstration.
+- To add another construction (panels, tiling, flooring) see `docs/ADDING_A_CONSTRUCTION.md`. Only the export/pacing/caption layer in `src/lesson/` is generic; the player UI is still wallpaper-specific.
 - Earlier simulator/video code and screenshots are prototypes, not proof of a unified verified 1080p production pipeline for every guide.
 - `contracts/blueprintData.ts`, `contracts/tasks/wallpaperTask.ts` and `src/wallpaper/guide.ts` are separate authorities for different prototypes. Do not treat them as one synchronized data source.
 - A realistic render does not establish manufacturer installation approval.

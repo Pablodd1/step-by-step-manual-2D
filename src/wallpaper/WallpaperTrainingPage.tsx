@@ -17,6 +17,9 @@ import {
   ShieldCheck,
   SkipBack,
   SkipForward,
+  Volume2,
+  VolumeX,
+  Film,
   X,
   ZoomIn
 } from "lucide-react";
@@ -24,6 +27,9 @@ import { ManualToolArt, resolveManualToolKind } from "../components/ManualLineAr
 import { WallpaperScene } from "./WallpaperScene";
 import { ReferenceDrawing } from "./ReferenceDrawing";
 import { LearningCheck } from "./LearningCheck";
+import { LessonVideoDialog } from "./LessonVideoDialog";
+import { wallpaperLesson } from "./lesson";
+import { pacedStepSeconds, spokenText } from "../lesson/pacing";
 import {
   canAccessStep,
   getSource,
@@ -89,7 +95,7 @@ function EvidenceDialog({ open, onClose }: { open: boolean; onClose: () => void 
   );
 }
 
-function PrintFieldSheet() {
+function PrintFieldSheet({ images }: { images: string[] }) {
   return (
     <main className="wallpaper-print-sheet">
       <header>
@@ -104,6 +110,7 @@ function PrintFieldSheet() {
         {steps.map((step, index) => (
           <article key={step.id}>
             <div className="print-step-heading"><span>{String(index + 1).padStart(2, "0")}</span><h2>{step.title}</h2></div>
+            {images[index] && <img className="print-step-figure" src={images[index]} alt={`Step ${index + 1} illustration: ${step.shortTitle}`} />}
             <p>{step.instruction}</p>
             <p><strong>Tools:</strong> {step.tools.join(", ")}</p>
             <p><strong>Inspection:</strong> {step.check}</p>
@@ -152,6 +159,11 @@ export default function WallpaperTrainingPage() {
   const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
   const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [narrate, setNarrate] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
+  const [stepImages, setStepImages] = useState<string[]>([]);
+  const [preparingSheet, setPreparingSheet] = useState(false);
+  const speechSupported = typeof window !== "undefined" && "speechSynthesis" in window;
   const step = steps[current];
 
   const setProgress = useCallback((value: number) => {
@@ -189,6 +201,20 @@ export default function WallpaperTrainingPage() {
     if (instructionScrollRef.current) instructionScrollRef.current.scrollTop = 0;
   }, [current]);
 
+  // Live narration: speaks the same text used for subtitles and the video captions.
+  useEffect(() => {
+    if (!narrate || !speechSupported) return;
+    const synth = window.speechSynthesis;
+    synth.cancel();
+    const utterance = new SpeechSynthesisUtterance(spokenText(steps[current]));
+    utterance.lang = "en-US";
+    synth.speak(utterance);
+    return () => synth.cancel();
+  }, [narrate, current, speechSupported]);
+
+  // While narrating, each step's animation stretches to the time needed to speak it.
+  const stepSpan = narrate ? pacedStepSeconds(step) : step.seconds;
+
   useEffect(() => {
     if (!playing) return;
     let animationFrame = 0;
@@ -197,7 +223,7 @@ export default function WallpaperTrainingPage() {
     const tick = (now: number) => {
       const delta = Math.min(0.08, (now - last) / 1000);
       last = now;
-      let next = progressRef.current + (delta * speed * direction) / step.seconds;
+      let next = progressRef.current + (delta * speed * direction) / stepSpan;
       if (next >= 1) {
         if (current < steps.length - 1 && canAccessStep(current + 1, electricalCleared)) {
           changedStep = true;
@@ -225,7 +251,7 @@ export default function WallpaperTrainingPage() {
     };
     animationFrame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(animationFrame);
-  }, [playing, current, direction, speed, electricalCleared, setProgress, step.seconds]);
+  }, [playing, current, direction, speed, electricalCleared, setProgress, stepSpan]);
 
   const goTo = useCallback((index: number) => {
     setPlaying(false);
@@ -283,6 +309,35 @@ export default function WallpaperTrainingPage() {
   const completedPhases = useMemo(() => new Set(steps.slice(0, current).map((item) => item.phase)).size, [current]);
   const correctChecks = useMemo(() => steps.filter((item) => answers[item.id] === item.checkpoint.answer).length, [answers]);
 
+  // Document + visual manual: render one CAD illustration per step from the same 3D scene, then print.
+  const printFieldSheet = async () => {
+    const scene = sceneRef.current;
+    if (!scene) {
+      window.print();
+      return;
+    }
+    setPlaying(false);
+    setPreparingSheet(true);
+    try {
+      const images: string[] = [];
+      scene.beginExport("drawing");
+      try {
+        const canvas = document.createElement("canvas");
+        for (let i = 0; i < steps.length; i += 1) {
+          await scene.renderLessonFrame(canvas, { stepIndex: i, progress: 0.62, operation: steps[i].operation, width: 960, height: 540 });
+          images.push(canvas.toDataURL("image/jpeg", 0.85));
+        }
+      } finally {
+        scene.endExport();
+      }
+      setStepImages(images);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    } finally {
+      setPreparingSheet(false);
+    }
+    window.print();
+  };
+
   return (
     <div className="wallpaper-app">
       <a className="skip-link" href="#training-instruction">Skip to current instruction</a>
@@ -291,8 +346,9 @@ export default function WallpaperTrainingPage() {
         <div className="training-breadcrumb">WALLCOVERINGS <span>/</span> PASTE THE WALL</div>
         <div className="topbar-actions">
           <Link className="text-button" to="/simulator"><Box size={16} /> 3-Track CAD Simulator</Link>
+          <button className="text-button" onClick={() => { setPlaying(false); setVideoOpen(true); }}><Film size={16} /> Export video</button>
           <button className="text-button" onClick={() => setEvidenceOpen(true)}><BookOpen size={16} /> Evidence</button>
-          <button className="text-button" onClick={() => window.print()}><Printer size={16} /> Field sheet</button>
+          <button className="text-button" onClick={printFieldSheet} disabled={preparingSheet}><Printer size={16} /> {preparingSheet ? "Preparing…" : "Field sheet"}</button>
         </div>
       </header>
 
@@ -343,6 +399,16 @@ export default function WallpaperTrainingPage() {
               aria-pressed={showLoupe}
             >
               <ZoomIn size={16} />
+            </button>
+            <button
+              className={`icon-button ${narrate ? "active" : ""}`}
+              onClick={() => setNarrate((v) => !v)}
+              disabled={!speechSupported}
+              title={speechSupported ? "Narrate each step aloud (playback slows to match speech)" : "Speech narration is not available in this browser"}
+              aria-label="Toggle narration"
+              aria-pressed={narrate}
+            >
+              {narrate ? <Volume2 size={16} /> : <VolumeX size={16} />}
             </button>
             <div className="stage-step-readout"><span>STEP {String(current + 1).padStart(2, "0")}</span><strong>{step.shortTitle}</strong></div>
             <button className="icon-button" onClick={() => sceneRef.current?.resetCamera(step.operation)} title="Reset camera" aria-label="Reset camera"><RotateCcw size={17} /></button>
@@ -413,7 +479,8 @@ export default function WallpaperTrainingPage() {
 
       <footer className="training-disclaimer"><AlertTriangle size={14} /><span>General teaching demo, not a substitute for the roll label, adhesive datasheet, site risk assessment or qualified electrical work.</span><button onClick={() => setEvidenceOpen(true)}>Review source boundaries</button></footer>
       <EvidenceDialog open={evidenceOpen} onClose={() => setEvidenceOpen(false)} />
-      <PrintFieldSheet />
+      <LessonVideoDialog open={videoOpen} lesson={wallpaperLesson} renderer={sceneRef.current} currentStep={current} onClose={() => setVideoOpen(false)} />
+      <PrintFieldSheet images={stepImages} />
     </div>
   );
 }

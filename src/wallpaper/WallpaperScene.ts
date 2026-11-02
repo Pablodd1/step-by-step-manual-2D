@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import {
   applyGroupViewMode,
   arcArrow,
@@ -12,6 +13,8 @@ import {
   type Pt2,
 } from "../scene/lineArtMaterials";
 import type { Operation } from "./guide";
+import { captionBarHeight, drawCaptionBar } from "../lesson/captions";
+import type { LessonFrameRequest, LessonRenderer, LessonStyle } from "../lesson/types";
 
 const WALL_W = 3.18;
 const WALL_H = 2.7;
@@ -81,6 +84,45 @@ function paperTexture(): THREE.CanvasTexture {
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 8;
+  return texture;
+}
+
+function floorTexture(): THREE.CanvasTexture {
+  const size = 1024;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const random = seeded(23);
+  const planks = 8;
+  const plankH = size / planks;
+  for (let row = 0; row < planks; row++) {
+    const shade = 0.82 + random() * 0.3;
+    ctx.fillStyle = `rgb(${Math.round(150 * shade)},${Math.round(108 * shade)},${Math.round(72 * shade)})`;
+    ctx.fillRect(0, row * plankH, size, plankH);
+    // grain
+    for (let g = 0; g < 70; g++) {
+      ctx.strokeStyle = `rgba(60,36,18,${0.04 + random() * 0.07})`;
+      ctx.lineWidth = 1 + random() * 1.4;
+      const y = row * plankH + random() * plankH;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.bezierCurveTo(size * 0.3, y + (random() - 0.5) * 7, size * 0.65, y + (random() - 0.5) * 7, size, y + (random() - 0.5) * 4);
+      ctx.stroke();
+    }
+    // staggered end joints
+    const joint = random() * size;
+    ctx.fillStyle = "rgba(30,18,8,0.55)";
+    ctx.fillRect(joint, row * plankH, 2, plankH);
+    // plank seam
+    ctx.fillStyle = "rgba(30,18,8,0.5)";
+    ctx.fillRect(0, row * plankH, size, 2);
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(4, 4);
   texture.anisotropy = 8;
   return texture;
 }
@@ -324,7 +366,7 @@ function makeTape(): THREE.Group {
   return group;
 }
 
-export class WallpaperScene {
+export class WallpaperScene implements LessonRenderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
   readonly camera = new THREE.PerspectiveCamera(42, 1, 0.05, 60);
@@ -372,6 +414,16 @@ export class WallpaperScene {
   private showLoupe = true;
   private frame = 0;
   private disposed = false;
+  private exporting = false;
+  private paperMeshes: Array<{ mesh: THREE.Mesh; material: THREE.Material }> = [];
+  private lastSeek: { stepIndex: number; progress: number; operation: Operation } = { stepIndex: 0, progress: 0, operation: "verify" };
+  private exportSaved: {
+    view: "room" | "drawing";
+    seek: { stepIndex: number; progress: number; operation: Operation };
+    position: THREE.Vector3;
+    target: THREE.Vector3;
+  } | null = null;
+  private environmentTarget: THREE.WebGLRenderTarget | null = null;
 
   constructor(host: HTMLElement) {
     this.host = host;
@@ -389,6 +441,13 @@ export class WallpaperScene {
     this.renderer.domElement.setAttribute("aria-label", "Interactive reconstructed wallpaper installation demonstration");
     this.renderer.domElement.setAttribute("role", "img");
     host.appendChild(this.renderer.domElement);
+
+    // Image-based lighting for the Realistic style (soft room reflections on tools, plates and paper sheen).
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.environmentTarget = pmrem.fromScene(new RoomEnvironment(), 0.04);
+    this.scene.environment = this.environmentTarget.texture;
+    this.scene.environmentIntensity = 0.32;
+    pmrem.dispose();
 
     // Circular 3.5x Magnifying Detail Loupe (#inset)
     this.insetCanvas = document.createElement("canvas");
@@ -451,7 +510,7 @@ export class WallpaperScene {
 
     this.floor = new THREE.Mesh(
       new THREE.PlaneGeometry(12, 10),
-      new THREE.MeshStandardMaterial({ color: "#25312f", roughness: 0.88 }),
+      new THREE.MeshStandardMaterial({ map: floorTexture(), roughness: 0.55 }),
     );
     markCadAuxiliary(this.floor);
     this.floor.rotation.x = -Math.PI / 2;
@@ -545,7 +604,7 @@ export class WallpaperScene {
       this.outletFlapsGroup.add(pivot);
     }
     this.outletFlapsGroup.visible = false;
-    this.dropsGroup.add(this.outletFlapsGroup);
+    this.scene.add(this.outletFlapsGroup);
 
     this.plumbLine = meshBox([0.007, 2.58, 0.005], "#0891b2", 0.35);
     markCadAuxiliary(this.plumbLine);
@@ -614,6 +673,12 @@ export class WallpaperScene {
     }
     this.scene.add(this.toolsGroup);
 
+    // The patterned paper keeps its printed texture in BOTH styles (outlines are added on top), so pattern-match
+    // steps stay meaningful in the line-drawing style instead of turning into blank cream sheets.
+    this.paperMeshes = [...this.drops, ...this.rolls, this.displayRoll, this.overhangStrip].map((mesh) => ({
+      mesh,
+      material: mesh.material as THREE.Material,
+    }));
     // Upgrade all 3D groups with our MIT-licensed CAD Cel + Fat Ink Creases + BackSide Hull Silhouettes
     upgradeGroupToLineArt(this.architectureGroup, {
       thresholdAngle: 24,
@@ -636,6 +701,14 @@ export class WallpaperScene {
       tintAmt: 0.34,
       drawingLineWidth: 2.15,
     });
+    // Relief flaps are open triangles: outline them, but no silhouette hull (it would render as solid black wedges).
+    upgradeGroupToLineArt(this.outletFlapsGroup, {
+      thresholdAngle: 22,
+      includeHull: false,
+      celBaseHex: 0xfaf8f2,
+      tintAmt: 0.16,
+      drawingLineWidth: 1.9,
+    });
 
     this.resize();
     this.applyCurrentViewMaterials();
@@ -652,10 +725,15 @@ export class WallpaperScene {
       viewMode: this.view,
       emphasis: "active",
     });
+    applyGroupViewMode(this.outletFlapsGroup, {
+      viewMode: this.view,
+      emphasis: "active",
+    });
     applyGroupViewMode(this.toolsGroup, {
       viewMode: this.view,
       emphasis: "accent",
     });
+    for (const { mesh, material } of this.paperMeshes) mesh.material = material;
   }
 
   private setDrop(index: number, reveal: number, visible: boolean) {
@@ -705,6 +783,7 @@ export class WallpaperScene {
     const p = THREE.MathUtils.clamp(progress, 0, 1);
     this.currentProgress = p;
     this.currentOperation = operation;
+    if (!this.exporting) this.lastSeek = { stepIndex, progress: p, operation };
     if (stepIndex !== this.currentStep) {
       this.currentStep = stepIndex;
       this.resetCamera(operation);
@@ -733,8 +812,8 @@ export class WallpaperScene {
 
     switch (operation) {
       case "verify": {
-        this.focusWorld.set(-0.72, 0.24, 0.46);
-        this.detailCamOffset.set(0.18, 0.14, 0.55);
+        this.focusWorld.set(-0.72, 0.33, 0.37);
+        this.detailCamOffset.set(0.12, 0.08, 0.85);
         this.detailTagEl.textContent = "3.5× ROLL LABEL & BATCH";
         break;
       }
@@ -948,6 +1027,9 @@ export class WallpaperScene {
     if (this.showLoupe && this.insetCtx) {
       this.detailCamera.position.copy(this.focusWorld).add(this.detailCamOffset);
       this.detailCamera.lookAt(this.focusWorld);
+      // Match the canvas aspect so the centre-square crop below is undistorted.
+      this.detailCamera.aspect = this.renderer.domElement.width / Math.max(1, this.renderer.domElement.height);
+      this.detailCamera.updateProjectionMatrix();
       this.detailCamera.updateMatrixWorld();
 
       this.outletRing.visible = false;
@@ -1078,17 +1160,22 @@ export class WallpaperScene {
     this.cameraPreset(operation);
   }
 
-  setView(view: "room" | "drawing") {
+  private applyView(view: "room" | "drawing") {
     this.view = view;
     this.floor.visible = view === "room";
     this.scene.background = new THREE.Color(view === "room" ? "#0c1220" : "#ffffff");
     this.scene.fog = view === "room" ? new THREE.Fog("#0c1220", 9, 18) : null;
     this.host.classList.toggle("cad-drawing-mode", view === "drawing");
     this.applyCurrentViewMaterials();
+  }
+
+  setView(view: "room" | "drawing") {
+    this.applyView(view);
     this.resetCamera();
   }
 
   resize() {
+    if (this.exporting) return;
     const width = Math.max(1, this.host.clientWidth);
     const height = Math.max(1, this.host.clientHeight);
     this.renderer.setSize(width, height, false);
@@ -1097,9 +1184,130 @@ export class WallpaperScene {
     setLineArtResolution(width, height);
   }
 
+  // ---- LessonRenderer: deterministic offscreen frames for MP4 export and printable step images ----
+
+  /** Logical layout size used for overlays/loupe; frames are rendered at any 16:9 size and scaled from this. */
+  private static readonly LOGICAL_W = 1280;
+  private static readonly LOGICAL_H = 720;
+
+  beginExport(style: LessonStyle) {
+    if (this.exporting) return;
+    this.exportSaved = {
+      view: this.view,
+      seek: { ...this.lastSeek },
+      position: this.camera.position.clone(),
+      target: this.controls.target.clone(),
+    };
+    this.exporting = true;
+    this.currentStep = -1; // force the first exported seek to apply the step's camera preset
+    this.applyView(style);
+  }
+
+  async renderLessonFrame(target: HTMLCanvasElement, request: LessonFrameRequest): Promise<void> {
+    if (!this.exporting) throw new Error("Call beginExport() before renderLessonFrame().");
+    const { width, height } = request;
+    const LW = WallpaperScene.LOGICAL_W;
+    const LH = WallpaperScene.LOGICAL_H;
+    if (Math.abs(width / height - LW / LH) > 0.01) throw new Error("Lesson frames must be 16:9.");
+
+    const stepChanged = request.stepIndex !== this.currentStep;
+    this.seek(request.stepIndex, request.progress, request.operation as Operation);
+    if (stepChanged) this.cameraPreset(request.operation as Operation);
+
+    this.renderer.setPixelRatio(1);
+    this.renderer.setSize(width, height, false);
+    // With a caption bar, frame the 3D view in the region above the bar so the action is never covered:
+    // the camera's full frustum maps to the visible area and the extra rows fall behind the bar.
+    if (request.caption) {
+      const visibleH = Math.max(1, height - captionBarHeight(width, request.caption));
+      this.camera.aspect = width / visibleH;
+      this.camera.setViewOffset(width, visibleH, 0, 0, width, height);
+    } else {
+      this.camera.clearViewOffset();
+      this.camera.aspect = LW / LH;
+    }
+    this.camera.updateProjectionMatrix();
+    // Line widths are authored in "logical pixels"; resolution = logical size keeps proportions at any export size.
+    setLineArtResolution(LW, LH);
+
+    this.renderer.render(this.scene, this.camera);
+    target.width = width;
+    target.height = height;
+    const ctx = target.getContext("2d");
+    if (!ctx) throw new Error("2D canvas is unavailable.");
+    ctx.drawImage(this.renderer.domElement, 0, 0, width, height);
+
+    // Loupe pass + SVG overlays are computed in logical space, then scaled onto the frame.
+    this.renderOverlays(LW, LH);
+    const k = width / LW;
+    if (this.leadsSvg.childNodes.length > 0) {
+      const clone = this.leadsSvg.cloneNode(true) as SVGSVGElement;
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      clone.setAttribute("width", String(LW));
+      clone.setAttribute("height", String(LH));
+      const xml = new XMLSerializer().serializeToString(clone);
+      const image = new Image();
+      image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
+      await image.decode();
+      ctx.drawImage(image, 0, 0, width, height);
+    }
+    if (this.showLoupe) {
+      const size = 192 * k;
+      const x = width - 16 * k - size;
+      const y = 16 * k;
+      const drawing = this.view === "drawing";
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(this.insetCanvas, x, y, size, size);
+      ctx.restore();
+      ctx.lineWidth = 2.5 * k;
+      ctx.strokeStyle = drawing ? "#141414" : "#22d3ee";
+      ctx.beginPath();
+      ctx.arc(x + size / 2, y + size / 2, size / 2 - 1.25 * k, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.font = `700 ${9 * k * 1.1}px "JetBrains Mono", ui-monospace, monospace`;
+      const tag = this.detailTagEl.textContent ?? "";
+      const tw = ctx.measureText(tag).width + 16 * k;
+      ctx.fillStyle = drawing ? "#ffffff" : "rgba(8,14,25,0.9)";
+      ctx.strokeStyle = drawing ? "#141414" : "#244b5e";
+      ctx.lineWidth = 1 * k;
+      const ty = y + size + 6 * k;
+      ctx.beginPath();
+      ctx.roundRect(x + size - tw, ty, tw, 20 * k, 10 * k);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = drawing ? "#141414" : "#22d3ee";
+      ctx.fillText(tag, x + size - tw + 8 * k, ty + 14 * k);
+    }
+    if (request.caption) drawCaptionBar(ctx, width, height, request.caption);
+  }
+
+  endExport() {
+    if (!this.exporting) return;
+    const saved = this.exportSaved;
+    this.exporting = false;
+    this.exportSaved = null;
+    this.camera.clearViewOffset();
+    this.resize();
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.resize();
+    if (saved) {
+      this.currentStep = saved.seek.stepIndex; // avoid a camera preset reset on restore
+      this.applyView(saved.view);
+      this.seek(saved.seek.stepIndex, saved.seek.progress, saved.seek.operation);
+      this.camera.position.copy(saved.position);
+      this.controls.target.copy(saved.target);
+      this.camera.lookAt(this.controls.target);
+      this.controls.update();
+    }
+  }
+
   private animate = () => {
     if (this.disposed) return;
     this.frame = requestAnimationFrame(this.animate);
+    if (this.exporting) return;
     this.controls.update();
     const width = Math.max(1, this.host.clientWidth);
     const height = Math.max(1, this.host.clientHeight);
@@ -1135,6 +1343,7 @@ export class WallpaperScene {
     geometries.forEach((item) => item.dispose());
     materials.forEach((item) => item.dispose());
     textures.forEach((item) => item.dispose());
+    this.environmentTarget?.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.insetCanvas.remove();
