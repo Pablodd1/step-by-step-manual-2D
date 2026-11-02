@@ -58,11 +58,17 @@ export async function exportLessonVideo(options: ExportLessonVideoOptions): Prom
   const bitrate = 8_000_000;
 
   if (!("VideoEncoder" in window) || !("VideoFrame" in window)) {
-    throw new Error("This browser does not provide WebCodecs video encoding. Use a current Chrome, Edge or Safari browser; no substitute file was generated.");
+    throw new Error("This browser does not provide WebCodecs video encoding. Use a current Chrome, Edge, Firefox, or Safari browser; no substitute file was generated.");
   }
   const { Output, Mp4OutputFormat, BufferTarget, CanvasSource, AudioBufferSource, canEncodeVideo, canEncodeAudio } = await import("mediabunny");
-  if (!(await canEncodeVideo("avc", { width, height, bitrate, frameRate: fps }))) {
-    throw new Error("This browser cannot encode H.264 at 1920×1080. No video was generated. Try a current hardware-accelerated desktop browser.");
+  let videoCodec: "avc" | "vp9" | null = null;
+  if (await canEncodeVideo("avc", { width, height, bitrate, frameRate: fps })) {
+    videoCodec = "avc";
+  } else if (await canEncodeVideo("vp9", { width, height, bitrate, frameRate: fps })) {
+    videoCodec = "vp9";
+  }
+  if (!videoCodec) {
+    throw new Error("This browser cannot encode H.264 or VP9 at 1920×1080. No video was generated. Try a current hardware-accelerated desktop browser.");
   }
 
   const plan = planLessonExport(lesson, scope, stepIndex, fps);
@@ -71,7 +77,7 @@ export async function exportLessonVideo(options: ExportLessonVideoOptions): Prom
   canvas.height = height;
   const target = new BufferTarget();
   const output = new Output({ format: new Mp4OutputFormat(), target });
-  const source = new CanvasSource(canvas, { codec: "avc", bitrate, keyFrameInterval: 2 });
+  const source = new CanvasSource(canvas, { codec: videoCodec, bitrate, keyFrameInterval: 2 });
   output.addVideoTrack(source, { frameRate: fps });
   output.setMetadataTags({ title: `${lesson.title} — PLUMB`, artist: "PLUMB field guide" });
 
@@ -80,10 +86,15 @@ export async function exportLessonVideo(options: ExportLessonVideoOptions): Prom
   const wantAudio = options.includeAudio !== false;
   if (wantAudio) {
     try {
-      const audioSupported = await canEncodeAudio("aac", { sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 });
-      if (audioSupported) {
+      let audioCodec: "aac" | "opus" | null = null;
+      if (await canEncodeAudio("aac", { sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 })) {
+        audioCodec = "aac";
+      } else if (await canEncodeAudio("opus", { sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 })) {
+        audioCodec = "opus";
+      }
+      if (audioCodec) {
         audioBuffer = synthesizeLessonAudio(lesson, plan.indices, plan.introSeconds, plan.seconds, 48000);
-        audioSource = new AudioBufferSource({ codec: "aac", bitrate: 128000 });
+        audioSource = new AudioBufferSource({ codec: audioCodec, bitrate: 128000 });
         output.addAudioTrack(audioSource);
       }
     } catch {

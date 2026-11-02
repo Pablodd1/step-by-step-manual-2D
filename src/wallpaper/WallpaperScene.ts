@@ -15,6 +15,14 @@ import {
 import type { Operation } from "./guide";
 import { captionBarHeight, drawCaptionBar } from "../lesson/captions";
 import type { LessonFrameRequest, LessonRenderer, LessonStyle } from "../lesson/types";
+import {
+  createFloorPbrMaps,
+  createPaperPbrMaps,
+  createProfiledCornice,
+  createProfiledSkirting,
+  createWallPbrMaps,
+  createWetPasteMaterial,
+} from "./pbrMaterials";
 
 const WALL_W = 3.18;
 const WALL_H = 2.7;
@@ -24,128 +32,8 @@ const LEFT = -WALL_W / 2;
 const FIRST_X = LEFT + 0.5 - DROP_W / 2;
 const OUTLET = new THREE.Vector3(FIRST_X + DROP_W + 0.08, 1.12, 0.055);
 
-interface DropMesh extends THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial> {
+interface DropMesh extends THREE.Mesh<THREE.PlaneGeometry, THREE.MeshPhysicalMaterial> {
   userData: { original: Float32Array };
-}
-
-function seeded(seed: number) {
-  let value = seed >>> 0;
-  return () => {
-    value = (value * 1664525 + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
-}
-
-function paperTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement("canvas");
-  canvas.width = 512;
-  canvas.height = 1024;
-  const ctx = canvas.getContext("2d")!;
-  ctx.fillStyle = "#e6e3da";
-  ctx.fillRect(0, 0, 512, 1024);
-  const random = seeded(41);
-  for (let i = 0; i < 22000; i++) {
-    const tone = random() > 0.5 ? 255 : 70;
-    ctx.fillStyle = `rgba(${tone},${tone},${tone},${0.018 + random() * 0.022})`;
-    ctx.fillRect(random() * 512, random() * 1024, 1, 1);
-  }
-  ctx.strokeStyle = "#315d52";
-  ctx.fillStyle = "#315d52";
-  ctx.lineCap = "round";
-  for (let row = -1; row < 5; row++) {
-    for (let col = 0; col < 3; col++) {
-      const ox = col * 256 + (row % 2 ? 128 : 0);
-      const oy = row * 256;
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(ox + 24, oy + 250);
-      ctx.bezierCurveTo(ox + 88, oy + 188, ox + 126, oy + 100, ox + 206, oy + 8);
-      ctx.stroke();
-      for (let k = 0; k < 5; k++) {
-        const x = ox + 66 + k * 27;
-        const y = oy + 202 - k * 39;
-        const side = k % 2 ? -1 : 1;
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(side * 0.72 - 0.42);
-        ctx.beginPath();
-        ctx.ellipse(side * 17, 0, 23, 8, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-      ctx.fillStyle = "#b99658";
-      for (let k = 0; k < 3; k++) {
-        ctx.beginPath();
-        ctx.arc(ox + 124 + k * 22, oy + 122 - k * 31, 4.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.fillStyle = "#315d52";
-    }
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = 8;
-  return texture;
-}
-
-function floorTexture(): THREE.CanvasTexture {
-  const size = 1024;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-  const random = seeded(23);
-  const planks = 8;
-  const plankH = size / planks;
-  for (let row = 0; row < planks; row++) {
-    const shade = 0.82 + random() * 0.3;
-    ctx.fillStyle = `rgb(${Math.round(150 * shade)},${Math.round(108 * shade)},${Math.round(72 * shade)})`;
-    ctx.fillRect(0, row * plankH, size, plankH);
-    // grain
-    for (let g = 0; g < 70; g++) {
-      ctx.strokeStyle = `rgba(60,36,18,${0.04 + random() * 0.07})`;
-      ctx.lineWidth = 1 + random() * 1.4;
-      const y = row * plankH + random() * plankH;
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.bezierCurveTo(size * 0.3, y + (random() - 0.5) * 7, size * 0.65, y + (random() - 0.5) * 7, size, y + (random() - 0.5) * 4);
-      ctx.stroke();
-    }
-    // staggered end joints
-    const joint = random() * size;
-    ctx.fillStyle = "rgba(30,18,8,0.55)";
-    ctx.fillRect(joint, row * plankH, 2, plankH);
-    // plank seam
-    ctx.fillStyle = "rgba(30,18,8,0.5)";
-    ctx.fillRect(0, row * plankH, size, 2);
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(4, 4);
-  texture.anisotropy = 8;
-  return texture;
-}
-
-function noiseTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement("canvas");
-  canvas.width = 128;
-  canvas.height = 128;
-  const ctx = canvas.getContext("2d")!;
-  const image = ctx.createImageData(128, 128);
-  const random = seeded(7);
-  for (let i = 0; i < image.data.length; i += 4) {
-    const value = 108 + Math.floor(random() * 40);
-    image.data[i] = value;
-    image.data[i + 1] = value;
-    image.data[i + 2] = value;
-    image.data[i + 3] = 255;
-  }
-  ctx.putImageData(image, 0, 0);
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(5, 5);
-  return texture;
 }
 
 function meshBox(
@@ -164,86 +52,175 @@ function meshBox(
 function makeCraftsmanHand(
   isLeft = false,
   gloveColor = "#2d3748",
-  palmColor = "#1a202c",
+  palmColor = "#141923",
   accentColor = "#eab308",
 ): THREE.Group {
   const hand = new THREE.Group();
   const dir = isLeft ? -1 : 1;
 
-  // Main palm / back of work glove
-  const palm = meshBox([0.052, 0.064, 0.034], gloveColor, 0.65, 0.02, true);
-  palm.position.set(0, 0, 0);
+  const fabricMat = new THREE.MeshPhysicalMaterial({
+    color: gloveColor,
+    roughness: 0.72,
+    metalness: 0.02,
+    sheen: 0.55,
+    sheenRoughness: 0.65,
+    sheenColor: new THREE.Color("#94a3b8"),
+  });
+  const nitrileMat = new THREE.MeshPhysicalMaterial({
+    color: palmColor,
+    roughness: 0.52,
+    metalness: 0.04,
+    clearcoat: 0.18,
+    clearcoatRoughness: 0.45,
+  });
+  const sleeveMat = new THREE.MeshPhysicalMaterial({
+    color: "#1e293b",
+    roughness: 0.84,
+    sheen: 0.4,
+    sheenRoughness: 0.75,
+    sheenColor: new THREE.Color("#64748b"),
+  });
+
+  // Sculpted anatomical metacarpal palm body
+  const palm = new THREE.Mesh(new RoundedBoxGeometry(0.056, 0.066, 0.032, 4, 0.011), fabricMat);
   hand.add(palm);
 
-  // Textured non-slip leather palm pad
-  const gripPad = meshBox([0.046, 0.052, 0.007], palmColor, 0.85, 0, true);
-  gripPad.position.set(0, -0.002, -0.017);
+  // Nitrile micro-foam grip pad across palm and lower fingers
+  const gripPad = new THREE.Mesh(new RoundedBoxGeometry(0.05, 0.054, 0.009, 3, 0.004), nitrileMat);
+  gripPad.position.set(0, -0.002, -0.015);
   hand.add(gripPad);
 
-  // Knuckle impact guard
-  const knuckle = meshBox([0.048, 0.016, 0.01], "#111827", 0.45, 0.1, true);
-  knuckle.position.set(0, 0.018, 0.015);
-  hand.add(knuckle);
+  // Thenar eminence (thumb muscle pad)
+  const thenar = new THREE.Mesh(new THREE.CapsuleGeometry(0.013, 0.024, 6, 12), fabricMat);
+  thenar.position.set(-0.022 * dir, -0.008, 0.006);
+  thenar.rotation.z = -0.35 * dir;
+  hand.add(thenar);
 
-  // Wrist cuff & safety hi-vis accent stripe
-  const cuff = meshBox([0.056, 0.042, 0.038], "#1a202c", 0.8, 0, true);
-  cuff.position.set(0, -0.048, 0);
-  const trim = meshBox([0.058, 0.01, 0.04], accentColor, 0.4, 0.2, true);
-  trim.position.set(0, -0.056, 0);
-  hand.add(cuff, trim);
+  // Molded TPR knuckle protector across dorsal ridge
+  const knuckleGuard = new THREE.Mesh(new RoundedBoxGeometry(0.052, 0.015, 0.01, 3, 0.004), nitrileMat);
+  knuckleGuard.position.set(0, 0.02, 0.015);
+  hand.add(knuckleGuard);
 
-  // 4 curled fingers wrapping around the tool grip
+  // Elasticated wrist cuff + hi-vis reflective safety band + angled forearm sleeve
+  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.028, 0.042, 18), nitrileMat);
+  cuff.scale.set(1.08, 1, 0.82);
+  cuff.position.set(0, -0.048, 0.002);
+  const trim = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.0275, 0.0285, 0.009, 18),
+    new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.3, metalness: 0.25 }),
+  );
+  trim.scale.set(1.08, 1, 0.82);
+  trim.position.set(0, -0.056, 0.002);
+  const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.029, 0.036, 0.13, 18), sleeveMat);
+  forearm.scale.set(1.06, 1, 0.86);
+  forearm.position.set(0.006 * dir, -0.125, 0.018);
+  forearm.rotation.set(0.22, 0, -0.08 * dir);
+  hand.add(cuff, trim, forearm);
+
+  // 4 articulated multi-phalange fingers curled around the grip
+  const fingerLengths = [0.028, 0.032, 0.03, 0.025];
   for (let i = 0; i < 4; i++) {
-    const xOff = (i - 1.5) * 0.0115 * dir;
-    const finger = meshBox([0.01, 0.03, 0.024], gloveColor, 0.7, 0, true);
-    finger.position.set(xOff, 0.036, -0.01);
-    finger.rotation.x = -0.4;
-    hand.add(finger);
+    const xOff = (i - 1.5) * 0.0125 * dir;
+    const fLen = fingerLengths[i];
+    const fingerGroup = new THREE.Group();
+    fingerGroup.position.set(xOff, 0.031, 0.004);
+
+    // Proximal phalanx
+    const prox = new THREE.Mesh(new THREE.CapsuleGeometry(0.0058, fLen * 0.55, 5, 10), fabricMat);
+    prox.position.set(0, fLen * 0.28, -0.006);
+    prox.rotation.x = -0.55;
+    fingerGroup.add(prox);
+
+    // Middle + distal phalanges curled inward to grip handle
+    const dist = new THREE.Mesh(new THREE.CapsuleGeometry(0.0052, fLen * 0.52, 5, 10), nitrileMat);
+    dist.position.set(0, fLen * 0.42, -0.022);
+    dist.rotation.x = -1.65;
+    fingerGroup.add(dist);
+
+    hand.add(fingerGroup);
   }
 
-  // Thumb pressing firmly along the tool body
-  const thumb = meshBox([0.014, 0.036, 0.018], gloveColor, 0.65, 0, true);
-  thumb.position.set(-0.03 * dir, 0.01, 0.012);
-  thumb.rotation.set(0.2, 0.3 * dir, -0.5 * dir);
-  hand.add(thumb);
+  // Articulated 2-segment thumb pressing firmly along tool spine
+  const thumbProx = new THREE.Mesh(new THREE.CapsuleGeometry(0.0072, 0.022, 5, 10), fabricMat);
+  thumbProx.position.set(-0.031 * dir, 0.008, 0.01);
+  thumbProx.rotation.set(0.25, 0.25 * dir, -0.52 * dir);
+  const thumbDist = new THREE.Mesh(new THREE.CapsuleGeometry(0.0065, 0.018, 5, 10), nitrileMat);
+  thumbDist.position.set(-0.035 * dir, 0.028, 0.014);
+  thumbDist.rotation.set(0.12, 0.15 * dir, -0.18 * dir);
+  hand.add(thumbProx, thumbDist);
 
   return hand;
 }
 
 function makeLevel(): THREE.Group {
   const group = new THREE.Group();
-  const body = meshBox([0.072, 0.74, 0.038], "#e0bd1f", 0.36, 0.1, true);
+  const body = new THREE.Mesh(
+    new RoundedBoxGeometry(0.072, 0.74, 0.038, 3, 0.005),
+    new THREE.MeshPhysicalMaterial({
+      color: "#e5be1f",
+      roughness: 0.28,
+      metalness: 0.45,
+      clearcoat: 0.35,
+      clearcoatRoughness: 0.2,
+    }),
+  );
   group.add(body);
-  const topCap = meshBox([0.076, 0.035, 0.042], "#1f2937", 0.6, 0, true);
+  const topCap = meshBox([0.076, 0.035, 0.042], "#1f2937", 0.65, 0, true);
   topCap.position.y = 0.36;
   const botCap = topCap.clone();
   botCap.position.y = -0.36;
   group.add(topCap, botCap);
   for (const y of [-0.22, 0, 0.22]) {
-    const bezel = meshBox([0.048, 0.088, 0.016], "#1e293b", 0.45, 0.2, true);
+    const bezel = meshBox([0.048, 0.088, 0.016], "#1e293b", 0.4, 0.25, true);
     bezel.position.set(0, y, 0.018);
     group.add(bezel);
     const vial = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.012, 0.056, 4, 12),
-      new THREE.MeshStandardMaterial({ color: "#86efac", roughness: 0.15 }),
+      new THREE.CapsuleGeometry(0.012, 0.056, 6, 14),
+      new THREE.MeshPhysicalMaterial({
+        color: "#86efac",
+        emissive: "#166534",
+        emissiveIntensity: 0.25,
+        roughness: 0.1,
+        transmission: 0.35,
+        transparent: true,
+        opacity: 0.92,
+      }),
     );
     vial.position.set(0, y, 0.025);
     group.add(vial);
+    // Plumb vial center air bubble
+    const bubble = new THREE.Mesh(
+      new THREE.SphereGeometry(0.0085, 12, 12),
+      new THREE.MeshPhysicalMaterial({ color: "#ffffff", roughness: 0.05, clearcoat: 1 }),
+    );
+    bubble.scale.set(0.85, 1.35, 0.6);
+    bubble.position.set(0, y, 0.031);
+    group.add(bubble);
   }
+  const hand = makeCraftsmanHand(true);
+  hand.position.set(-0.02, -0.05, 0.028);
+  hand.rotation.set(0, 0, -Math.PI / 2);
+  group.add(hand);
   return group;
 }
 
 function makeRoller(): THREE.Group {
   const group = new THREE.Group();
   const sleeve = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.046, 0.046, 0.25, 28),
-    new THREE.MeshStandardMaterial({ color: "#ece9e0", roughness: 0.92 }),
+    new THREE.CylinderGeometry(0.046, 0.046, 0.25, 32),
+    new THREE.MeshPhysicalMaterial({
+      color: "#f1eee4",
+      roughness: 0.94,
+      sheen: 0.65,
+      sheenRoughness: 0.85,
+      sheenColor: new THREE.Color("#ffffff"),
+    }),
   );
   sleeve.rotation.z = Math.PI / 2;
   group.add(sleeve);
   const endCapL = new THREE.Mesh(
     new THREE.CylinderGeometry(0.047, 0.047, 0.012, 24),
-    new THREE.MeshStandardMaterial({ color: "#334155", roughness: 0.5 }),
+    new THREE.MeshStandardMaterial({ color: "#334155", roughness: 0.45 }),
   );
   endCapL.rotation.z = Math.PI / 2;
   endCapL.position.x = -0.125;
@@ -251,19 +228,19 @@ function makeRoller(): THREE.Group {
   endCapR.position.x = 0.125;
   group.add(endCapL, endCapR);
 
-  const metal = new THREE.MeshStandardMaterial({ color: "#94a3b8", metalness: 0.78, roughness: 0.28 });
-  const wireHorizontal = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.15, 12), metal);
+  const metal = new THREE.MeshStandardMaterial({ color: "#cbd5e1", metalness: 0.88, roughness: 0.18 });
+  const wireHorizontal = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.15, 14), metal);
   wireHorizontal.rotation.z = Math.PI / 2;
   wireHorizontal.position.set(0.06, -0.08, 0);
-  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.24, 12), metal);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.24, 14), metal);
   arm.position.set(0.12, -0.14, 0);
   group.add(wireHorizontal, arm);
 
-  const ferrule = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.03, 16), metal);
+  const ferrule = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.02, 0.03, 18), metal);
   ferrule.position.set(0.12, -0.25, 0);
   const handle = new THREE.Mesh(
-    new THREE.CapsuleGeometry(0.023, 0.13, 6, 14),
-    new THREE.MeshStandardMaterial({ color: "#1d4640", roughness: 0.45 }),
+    new THREE.CapsuleGeometry(0.023, 0.13, 8, 16),
+    new THREE.MeshPhysicalMaterial({ color: "#1d4640", roughness: 0.38, clearcoat: 0.25 }),
   );
   handle.position.set(0.12, -0.34, 0);
   const hand = makeCraftsmanHand(false);
@@ -274,8 +251,11 @@ function makeRoller(): THREE.Group {
 
 function makeSmoother(): THREE.Group {
   const group = new THREE.Group();
-  const blade = meshBox([0.24, 0.12, 0.01], "#eab308", 0.38, 0.05, true);
-  const feltEdge = meshBox([0.242, 0.024, 0.013], "#fef3c7", 0.85, 0, true);
+  const blade = new THREE.Mesh(
+    new RoundedBoxGeometry(0.24, 0.12, 0.01, 3, 0.003),
+    new THREE.MeshPhysicalMaterial({ color: "#eab308", roughness: 0.3, clearcoat: 0.4, clearcoatRoughness: 0.2 }),
+  );
+  const feltEdge = meshBox([0.242, 0.024, 0.013], "#fef3c7", 0.9, 0, true);
   feltEdge.position.y = -0.052;
   const grip = meshBox([0.15, 0.052, 0.034], "#1e293b", 0.48, 0.1, true);
   grip.position.set(0, 0.022, 0.02);
@@ -288,14 +268,20 @@ function makeSmoother(): THREE.Group {
 
 function makeKnife(): THREE.Group {
   const group = new THREE.Group();
-  const body = meshBox([0.032, 0.155, 0.02], "#eab308", 0.4, 0.08, true);
+  const body = new THREE.Mesh(
+    new RoundedBoxGeometry(0.032, 0.155, 0.02, 3, 0.004),
+    new THREE.MeshPhysicalMaterial({ color: "#eab308", roughness: 0.32, clearcoat: 0.42 }),
+  );
   const grip = meshBox([0.035, 0.11, 0.023], "#1e293b", 0.65, 0.05, true);
   grip.position.set(0, -0.015, 0);
-  const slider = meshBox([0.018, 0.028, 0.026], "#0f172a", 0.4, 0.2, true);
+  const slider = meshBox([0.018, 0.028, 0.026], "#0f172a", 0.35, 0.2, true);
   slider.position.set(0, 0.03, 0.004);
-  const channel = meshBox([0.02, 0.05, 0.01], "#cbd5e1", 0.25, 0.85);
+  const channel = meshBox([0.02, 0.05, 0.01], "#cbd5e1", 0.2, 0.9);
   channel.position.y = 0.08;
-  const blade = meshBox([0.016, 0.088, 0.003], "#e2e8f0", 0.18, 0.9);
+  const blade = new THREE.Mesh(
+    new THREE.BoxGeometry(0.016, 0.088, 0.003),
+    new THREE.MeshPhysicalMaterial({ color: "#f1f5f9", roughness: 0.12, metalness: 0.94, clearcoat: 0.5 }),
+  );
   blade.position.y = 0.12;
   blade.rotation.z = -0.08;
   const hand = makeCraftsmanHand(false);
@@ -307,10 +293,16 @@ function makeKnife(): THREE.Group {
 
 function makeStraightedge(): THREE.Group {
   const group = new THREE.Group();
-  const rule = meshBox([0.56, 0.054, 0.008], "#cbd5e1", 0.28, 0.82, true);
-  const ridge = meshBox([0.54, 0.018, 0.022], "#334155", 0.45, 0.4, true);
+  const rule = new THREE.Mesh(
+    new RoundedBoxGeometry(0.56, 0.054, 0.008, 2, 0.002),
+    new THREE.MeshPhysicalMaterial({ color: "#dbe4ee", roughness: 0.22, metalness: 0.88, clearcoat: 0.25 }),
+  );
+  const ridge = meshBox([0.54, 0.018, 0.022], "#334155", 0.42, 0.45, true);
   ridge.position.set(0, 0.008, 0.012);
-  group.add(rule, ridge);
+  const handL = makeCraftsmanHand(true);
+  handL.position.set(-0.16, 0.01, 0.028);
+  handL.scale.setScalar(0.88);
+  group.add(rule, ridge, handL);
   return group;
 }
 
@@ -550,37 +542,72 @@ export class WallpaperScene implements LessonRenderer {
 
     const hemi = new THREE.HemisphereLight("#dbe8ef", "#26352e", 1.55);
     this.scene.add(hemi);
-    const key = new THREE.DirectionalLight("#fff4df", 3.2);
-    key.position.set(-3, 5, 5);
+    const key = new THREE.DirectionalLight("#fff4df", 3.35);
+    key.position.set(-2.8, 4.8, 4.8);
     key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
-    key.shadow.camera.left = -4;
-    key.shadow.camera.right = 4;
-    key.shadow.camera.top = 4;
-    key.shadow.camera.bottom = -2;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.left = -3.6;
+    key.shadow.camera.right = 3.6;
+    key.shadow.camera.top = 3.6;
+    key.shadow.camera.bottom = -1.6;
+    key.shadow.bias = -0.0003;
+    key.shadow.normalBias = 0.012;
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight("#8ec9c0", 1.2);
-    rim.position.set(4, 2, 1);
+    const rim = new THREE.DirectionalLight("#8ec9c0", 1.25);
+    rim.position.set(4, 2.2, 1.4);
     this.scene.add(rim);
 
-    const wall = meshBox([WALL_W, WALL_H, 0.12], "#b9b6ad", 0.94);
+    // Physically based architectural wall (gypsum plaster albedo + normal + roughness + baked AO)
+    const wallMaps = createWallPbrMaps();
+    const wallMat = new THREE.MeshStandardMaterial({
+      map: wallMaps.map,
+      normalMap: wallMaps.normalMap,
+      normalScale: new THREE.Vector2(0.45, 0.45),
+      roughnessMap: wallMaps.roughnessMap,
+      roughness: 0.96,
+      metalness: 0.0,
+    });
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(WALL_W, WALL_H, 0.12), wallMat);
     wall.position.set(0, WALL_H / 2, -0.065);
     wall.receiveShadow = true;
     this.architectureGroup.add(wall);
-    const side = meshBox([0.12, WALL_H, 0.72], "#aaa79f", 0.94);
+
+    const sideMat = wallMat.clone();
+    sideMat.color.set("#ebe8df");
+    const side = new THREE.Mesh(new THREE.BoxGeometry(0.12, WALL_H, 0.78), sideMat);
     side.position.set(LEFT - 0.06, WALL_H / 2, -0.36);
+    side.castShadow = true;
+    side.receiveShadow = true;
     this.architectureGroup.add(side);
-    const skirting = meshBox([WALL_W + 0.08, 0.09, 0.055], "#e0ded6", 0.72);
-    skirting.position.set(0, 0.045, 0.025);
+
+    const trimMat = new THREE.MeshPhysicalMaterial({
+      color: "#ebe9e1",
+      roughness: 0.34,
+      metalness: 0.0,
+      clearcoat: 0.38,
+      clearcoatRoughness: 0.28,
+    });
+    const skirting = createProfiledSkirting(WALL_W + 0.08, trimMat);
+    skirting.position.set(0, 0, -0.005);
     this.architectureGroup.add(skirting);
-    const ceiling = meshBox([WALL_W + 0.15, 0.07, 0.3], "#d7d5cd", 0.85);
-    ceiling.position.set(0, WALL_H + 0.035, -0.08);
-    this.architectureGroup.add(ceiling);
+
+    const cornice = createProfiledCornice(WALL_W + 0.15, trimMat);
+    cornice.position.set(0, WALL_H, -0.005);
+    this.architectureGroup.add(cornice);
     this.scene.add(this.architectureGroup);
 
+    const floorMaps = createFloorPbrMaps();
     this.floor = new THREE.Mesh(
       new THREE.PlaneGeometry(12, 10),
-      new THREE.MeshStandardMaterial({ map: floorTexture(), roughness: 0.55 }),
+      new THREE.MeshPhysicalMaterial({
+        map: floorMaps.map,
+        normalMap: floorMaps.normalMap,
+        normalScale: new THREE.Vector2(0.55, 0.55),
+        roughnessMap: floorMaps.roughnessMap,
+        roughness: 0.65,
+        clearcoat: 0.26,
+        clearcoatRoughness: 0.36,
+      }),
     );
     markCadAuxiliary(this.floor);
     this.floor.rotation.x = -Math.PI / 2;
@@ -588,14 +615,23 @@ export class WallpaperScene implements LessonRenderer {
     this.floor.receiveShadow = true;
     this.scene.add(this.floor);
 
-    const texture = paperTexture();
-    const bump = noiseTexture();
+    const paperMaps = createPaperPbrMaps();
+    const kraftCoreMat = new THREE.MeshStandardMaterial({
+      color: "#8f6d48",
+      roughness: 0.88,
+      side: THREE.DoubleSide,
+    });
+    const wetPasteMat = createWetPasteMaterial();
     for (let i = 0; i < 6; i++) {
-      const material = new THREE.MeshStandardMaterial({
-        map: texture,
-        bumpMap: bump,
-        bumpScale: 0.0015,
-        roughness: 0.87,
+      const material = new THREE.MeshPhysicalMaterial({
+        map: paperMaps.map,
+        normalMap: paperMaps.normalMap,
+        normalScale: new THREE.Vector2(0.65, 0.65),
+        roughnessMap: paperMaps.roughnessMap,
+        roughness: 0.86,
+        sheen: 0.45,
+        sheenRoughness: 0.55,
+        sheenColor: new THREE.Color("#f7f4eb"),
         side: THREE.DoubleSide,
       });
       const geometry = new THREE.PlaneGeometry(DROP_W, DROP_H, 12, 48);
@@ -607,18 +643,28 @@ export class WallpaperScene implements LessonRenderer {
       this.drops.push(drop);
       this.dropsGroup.add(drop);
 
-      const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.043, 0.043, DROP_W, 32), material);
+      const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.043, 0.043, DROP_W, 36, 1, false), material);
       roll.rotation.z = Math.PI / 2;
       roll.position.x = drop.position.x;
       roll.position.z = 0.065;
       roll.castShadow = true;
+      const coreTube = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.02, 0.02, DROP_W + 0.003, 24, 1, false),
+        kraftCoreMat,
+      );
+      roll.add(coreTube);
+      const coreHole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.015, 0.015, DROP_W + 0.005, 24),
+        new THREE.MeshStandardMaterial({ color: "#2d2115", roughness: 0.95 }),
+      );
+      roll.add(coreHole);
       this.rolls.push(roll);
       this.dropsGroup.add(roll);
 
       if (i < 2) {
         const lane = new THREE.Mesh(
           new THREE.PlaneGeometry(DROP_W + 0.035, DROP_H),
-          new THREE.MeshBasicMaterial({ color: "#75c9d5", transparent: true, opacity: 0.28, depthWrite: false }),
+          wetPasteMat,
         );
         markCadAuxiliary(lane);
         lane.position.set(drop.position.x, WALL_H / 2, 0.009);
@@ -682,15 +728,49 @@ export class WallpaperScene implements LessonRenderer {
     this.scene.add(this.plumbLine);
 
     this.outlet = new THREE.Group();
-    const plate = meshBox([0.17, 0.115, 0.022], "#e2e0d8", 0.32, 0, true);
+    const plate = new THREE.Mesh(
+      new RoundedBoxGeometry(0.17, 0.115, 0.022, 4, 0.004),
+      new THREE.MeshPhysicalMaterial({
+        color: "#e8e6de",
+        roughness: 0.24,
+        clearcoat: 0.65,
+        clearcoatRoughness: 0.18,
+      }),
+    );
     this.outlet.add(plate);
     for (const x of [-0.042, 0.042]) {
-      for (const y of [-0.022, 0.022]) {
-        const slot = meshBox([0.009, 0.026, 0.006], "#30383a", 0.5);
-        slot.position.set(x, y, 0.014);
+      // Recessed duplex socket face
+      const socketFace = new THREE.Mesh(
+        new RoundedBoxGeometry(0.052, 0.068, 0.005, 3, 0.004),
+        new THREE.MeshStandardMaterial({ color: "#dcdad0", roughness: 0.36 }),
+      );
+      socketFace.position.set(x, 0, 0.011);
+      this.outlet.add(socketFace);
+      for (const y of [-0.015, 0.015]) {
+        const slot = meshBox([0.006, 0.022, 0.006], "#181d20", 0.5);
+        slot.position.set(x - 0.008, y, 0.013);
         this.outlet.add(slot);
+        const slotR = meshBox([0.006, 0.018, 0.006], "#181d20", 0.5);
+        slotR.position.set(x + 0.008, y, 0.013);
+        this.outlet.add(slotR);
       }
+      // Ground pin aperture
+      const groundPin = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.0042, 0.0042, 0.006, 12),
+        new THREE.MeshStandardMaterial({ color: "#181d20", roughness: 0.5 }),
+      );
+      groundPin.rotation.x = Math.PI / 2;
+      groundPin.position.set(x, -0.024, 0.013);
+      this.outlet.add(groundPin);
     }
+    // Center faceplate mounting screw
+    const screw = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.0045, 0.0045, 0.005, 14),
+      new THREE.MeshStandardMaterial({ color: "#b8b4a8", roughness: 0.28, metalness: 0.8 }),
+    );
+    screw.rotation.x = Math.PI / 2;
+    screw.position.set(0, 0, 0.012);
+    this.outlet.add(screw);
     this.outlet.position.copy(OUTLET);
     this.architectureGroup.add(this.outlet);
 
@@ -706,6 +786,16 @@ export class WallpaperScene implements LessonRenderer {
     this.displayRoll.rotation.z = Math.PI / 2;
     this.displayRoll.position.set(-0.72, 0.1, 0.58);
     this.displayRoll.castShadow = true;
+    const dispCore = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.038, 0.038, DROP_W + 0.004, 32),
+      kraftCoreMat,
+    );
+    this.displayRoll.add(dispCore);
+    const dispHole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.031, 0.031, DROP_W + 0.006, 32),
+      new THREE.MeshStandardMaterial({ color: "#2d2115", roughness: 0.95 }),
+    );
+    this.displayRoll.add(dispHole);
     this.toolsGroup.add(this.displayRoll);
 
     this.productLabel.position.set(-0.72, 0.32, 0.36);
