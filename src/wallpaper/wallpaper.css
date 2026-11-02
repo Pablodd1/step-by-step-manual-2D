@@ -378,13 +378,54 @@
 .lesson-video-dialog .dialog-copy { margin-top: 12px; font-size: 12px; }
 .lesson-video-dialog .export-start { width: 100%; margin-top: 16px; min-height: 44px; }
 .lesson-video-dialog .export-compat { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; color: var(--wp-muted); font-size: 11px; }
-.lesson-video-dialog .export-progress, .lesson-video-dialog .export-complete { display: grid; gap: 10px; justify-items: start; margin-top: 20px; }
+.lesson-video-dialog .export-progress, .lesson-video-dialog .export-complete { display: grid; gap: 12px; justify-items: start; margin-top: 18px; width: 100%; }
+.lesson-video-dialog .export-complete-header { display: flex; align-items: center; gap: 12px; }
+.lesson-video-dialog .export-complete-header svg { color: var(--wp-green); flex-shrink: 0; }
+.lesson-video-dialog .export-complete-header h3 { margin: 0; font-size: 16px; color: var(--wp-text); }
+.lesson-video-dialog .export-complete-header p { margin: 2px 0 0; font-size: 12px; color: var(--wp-muted); }
+.lesson-video-dialog .export-video-preview { width: 100%; border-radius: 6px; overflow: hidden; background: #000; border: 1px solid var(--wp-border); margin: 6px 0; }
+.lesson-video-dialog .export-preview-player { display: block; width: 100%; max-height: 380px; aspect-ratio: 16 / 9; outline: none; }
 .lesson-video-dialog .export-progress progress { width: 100%; height: 10px; accent-color: var(--wp-cyan); }
-.lesson-video-dialog .export-complete svg { color: var(--wp-green); }
-.lesson-video-dialog .export-downloads { display: flex; flex-wrap: wrap; gap: 8px; }
+.lesson-video-dialog .export-downloads { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .lesson-video-dialog .export-downloads a { text-decoration: none; }
 .lesson-video-dialog .export-message { display: flex; gap: 10px; margin-top: 16px; padding: 12px; border: 1px solid #66521d; color: var(--wp-amber); background: #1f1a0d; }
 .lesson-video-dialog .export-message p { margin: 0; font-size: 12px; }
 .lesson-video-dialog .spin { animation: wp-spin 1s linear infinite; }
 @keyframes wp-spin { to { transform: rotate(360deg); } }
 .print-step-figure { display: block; width: 100%; height: auto; margin: 6px 0 0; border: 1px solid #a9b0b3; }
+
+.shortcuts-dialog .shortcuts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+.shortcuts-dialog .shortcuts-grid > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: #0d1625;
+  border: 1px solid var(--wp-border);
+}
+.shortcuts-dialog .shortcuts-grid kbd {
+  display: inline-block;
+  padding: 3px 7px;
+  font: 11px/1 "JetBrains Mono", monospace;
+  font-weight: 700;
+  color: var(--wp-cyan);
+  background: #142338;
+  border: 1px solid var(--wp-border-hi);
+  border-radius: 3px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.shortcuts-dialog .shortcuts-grid span {
+  font-size: 12px;
+  color: var(--wp-text);
+}
+@media (max-width: 640px) {
+  .shortcuts-dialog .shortcuts-grid {
+    grid-template-columns: 1fr;
+  }
+}

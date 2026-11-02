@@ -161,6 +161,55 @@ function meshBox(
   return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness, metalness }));
 }
 
+function makeCraftsmanHand(
+  isLeft = false,
+  gloveColor = "#2d3748",
+  palmColor = "#1a202c",
+  accentColor = "#eab308",
+): THREE.Group {
+  const hand = new THREE.Group();
+  const dir = isLeft ? -1 : 1;
+
+  // Main palm / back of work glove
+  const palm = meshBox([0.052, 0.064, 0.034], gloveColor, 0.65, 0.02, true);
+  palm.position.set(0, 0, 0);
+  hand.add(palm);
+
+  // Textured non-slip leather palm pad
+  const gripPad = meshBox([0.046, 0.052, 0.007], palmColor, 0.85, 0, true);
+  gripPad.position.set(0, -0.002, -0.017);
+  hand.add(gripPad);
+
+  // Knuckle impact guard
+  const knuckle = meshBox([0.048, 0.016, 0.01], "#111827", 0.45, 0.1, true);
+  knuckle.position.set(0, 0.018, 0.015);
+  hand.add(knuckle);
+
+  // Wrist cuff & safety hi-vis accent stripe
+  const cuff = meshBox([0.056, 0.042, 0.038], "#1a202c", 0.8, 0, true);
+  cuff.position.set(0, -0.048, 0);
+  const trim = meshBox([0.058, 0.01, 0.04], accentColor, 0.4, 0.2, true);
+  trim.position.set(0, -0.056, 0);
+  hand.add(cuff, trim);
+
+  // 4 curled fingers wrapping around the tool grip
+  for (let i = 0; i < 4; i++) {
+    const xOff = (i - 1.5) * 0.0115 * dir;
+    const finger = meshBox([0.01, 0.03, 0.024], gloveColor, 0.7, 0, true);
+    finger.position.set(xOff, 0.036, -0.01);
+    finger.rotation.x = -0.4;
+    hand.add(finger);
+  }
+
+  // Thumb pressing firmly along the tool body
+  const thumb = meshBox([0.014, 0.036, 0.018], gloveColor, 0.65, 0, true);
+  thumb.position.set(-0.03 * dir, 0.01, 0.012);
+  thumb.rotation.set(0.2, 0.3 * dir, -0.5 * dir);
+  hand.add(thumb);
+
+  return hand;
+}
+
 function makeLevel(): THREE.Group {
   const group = new THREE.Group();
   const body = meshBox([0.072, 0.74, 0.038], "#e0bd1f", 0.36, 0.1, true);
@@ -217,7 +266,9 @@ function makeRoller(): THREE.Group {
     new THREE.MeshStandardMaterial({ color: "#1d4640", roughness: 0.45 }),
   );
   handle.position.set(0.12, -0.34, 0);
-  group.add(ferrule, handle);
+  const hand = makeCraftsmanHand(false);
+  hand.position.set(0.12, -0.34, 0.012);
+  group.add(ferrule, handle, hand);
   return group;
 }
 
@@ -228,7 +279,10 @@ function makeSmoother(): THREE.Group {
   feltEdge.position.y = -0.052;
   const grip = meshBox([0.15, 0.052, 0.034], "#1e293b", 0.48, 0.1, true);
   grip.position.set(0, 0.022, 0.02);
-  group.add(blade, feltEdge, grip);
+  const hand = makeCraftsmanHand(false);
+  hand.position.set(0, 0.015, 0.035);
+  hand.rotation.set(0.18, 0, 0);
+  group.add(blade, feltEdge, grip, hand);
   return group;
 }
 
@@ -244,7 +298,10 @@ function makeKnife(): THREE.Group {
   const blade = meshBox([0.016, 0.088, 0.003], "#e2e8f0", 0.18, 0.9);
   blade.position.y = 0.12;
   blade.rotation.z = -0.08;
-  group.add(body, grip, slider, channel, blade);
+  const hand = makeCraftsmanHand(false);
+  hand.position.set(0, -0.02, 0.015);
+  hand.rotation.set(-0.1, 0, 0.05);
+  group.add(body, grip, slider, channel, blade, hand);
   return group;
 }
 
@@ -265,7 +322,9 @@ function makeFillingKnife(): THREE.Group {
   bolster.position.y = 0.004;
   const handle = meshBox([0.044, 0.125, 0.03], "#1e3a34", 0.5, 0.05, true);
   handle.position.y = -0.065;
-  group.add(blade, bolster, handle);
+  const hand = makeCraftsmanHand(false);
+  hand.position.set(0, -0.065, 0.015);
+  group.add(blade, bolster, handle, hand);
   return group;
 }
 
@@ -278,7 +337,9 @@ function makePasteBrush(): THREE.Group {
   bristles.position.y = -0.058;
   const handle = meshBox([0.038, 0.145, 0.026], "#1e3a34", 0.5, 0, true);
   handle.position.y = 0.095;
-  group.add(stock, ferrule, bristles, handle);
+  const hand = makeCraftsmanHand(false);
+  hand.position.set(0, 0.095, 0.015);
+  group.add(stock, ferrule, bristles, handle, hand);
   return group;
 }
 
@@ -287,7 +348,10 @@ function makeSponge(): THREE.Group {
   const body = meshBox([0.15, 0.085, 0.048], "#e2c86b", 0.92, 0, true);
   const scrubPad = meshBox([0.146, 0.082, 0.012], "#2b594b", 0.88, 0, true);
   scrubPad.position.z = -0.026;
-  group.add(body, scrubPad);
+  const hand = makeCraftsmanHand(false);
+  hand.position.set(0, 0, 0.025);
+  hand.rotation.set(0.2, 0, 0);
+  group.add(body, scrubPad, hand);
   return group;
 }
 
@@ -307,7 +371,10 @@ function makePencil(): THREE.Group {
     new THREE.MeshStandardMaterial({ color: "#1e293b", roughness: 0.5 }),
   );
   lead.position.y = 0.116;
-  group.add(body, woodCone, lead);
+  const hand = makeCraftsmanHand(false);
+  hand.position.set(0, 0, 0.015);
+  hand.scale.setScalar(0.72);
+  group.add(body, woodCone, lead, hand);
   return group;
 }
 
@@ -323,7 +390,10 @@ function makeVoltageTester(): THREE.Group {
     new THREE.MeshBasicMaterial({ color: "#22c55e" }),
   );
   led.position.y = 0.068;
-  group.add(body, clip, probe, led);
+  const hand = makeCraftsmanHand(false);
+  hand.position.set(0, -0.03, 0.015);
+  hand.scale.setScalar(0.85);
+  group.add(body, clip, probe, led, hand);
   return group;
 }
 

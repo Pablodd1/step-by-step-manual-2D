@@ -21,12 +21,13 @@ caption bar, deterministic MP4 export and printable step images only need two th
      (always 16:9), draw the result on `canvas`, then call `drawCaptionBar` if `request.caption` is present.
      Copy the pattern in `WallpaperScene.renderLessonFrame`, including the view-offset trick that keeps the action above the caption bar.
 4. **Reuse, don't rewrite**:
-   - `exportLessonVideo()` → silent H.264 MP4 plus a `.vtt` subtitle sidecar.
-   - `LessonVideoDialog` → the export UI (takes any `LessonDefinition` + `LessonRenderer`).
+   - `exportLessonVideo()` → H.264 MP4 with synchronized 48kHz AAC stereo audio cues track plus a `.vtt` subtitle sidecar.
+   - `synthesizeLessonAudio()` → mathematical DSP audio engine (intro welcome chord, step transition chimes, safety caution tones, tool operation acoustics, and resolution completion chord).
+   - `LessonVideoDialog` → the export UI with embedded HTML5 video preview player (takes any `LessonDefinition` + `LessonRenderer`).
    - `pacedStepSeconds()` → step length long enough to read/narrate the text.
    - `spokenText()` → the one string used for narration, subtitles and reading-time.
-5. **Add tests** like `tests/lesson-outputs.test.ts` for your lesson (pacing, subtitles, caption fit).
-6. **Verify in a real browser**: export one step, then `ffprobe` the MP4 (codec `h264`, 1920×1080, 30 fps, expected frame count) and look at extracted frames.
+5. **Add tests** like `tests/lesson-outputs.test.ts` and `tests/audio-engine.test.ts` for your lesson (pacing, subtitles, caption fit, and audio synthesis).
+6. **Verify in a real browser**: export one step or the complete lesson, then `ffprobe` the MP4 (codec `h264`, 1920×1080, 30 fps, audio `aac` 48kHz stereo, expected frame count) and look at extracted frames.
 
 ## What is *not* generic yet
 
@@ -34,4 +35,3 @@ caption bar, deterministic MP4 export and printable step images only need two th
   A second construction needs its own page, or this page needs to be generalised first.
 - There is no route registry. Routes are added by hand in `src/App.tsx`.
 - `contracts/blueprintData.ts`, `contracts/tasks/wallpaperTask.ts` and `src/wallpaper/guide.ts` remain three separate data sources.
-- Video has no audio track. Browser speech synthesis cannot be written to a file; a recorded or generated narration track would have to be added and mixed (e.g. with mediabunny audio sources).

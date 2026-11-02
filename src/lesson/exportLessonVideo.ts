@@ -1,3 +1,4 @@
+import { synthesizeLessonAudio } from "./audioEngine";
 import { buildWebVtt, captionForStep, drawTitleCard } from "./captions";
 import { pacedStepSeconds, pacedTotalSeconds, videoProgress } from "./pacing";
 import type { LessonDefinition, LessonRenderer, LessonStyle } from "./types";
@@ -18,6 +19,8 @@ export interface ExportLessonVideoOptions {
   fps?: number;
   width?: number;
   height?: number;
+  /** Whether to synthesize and mux the AAC instructional audio cues track into the MP4 (default true). */
+  includeAudio?: boolean;
 }
 
 export interface ExportedLessonVideo {
@@ -27,7 +30,7 @@ export interface ExportedLessonVideo {
   vttFileName: string;
   frames: number;
   seconds: number;
-  hasAudio: false;
+  hasAudio: boolean;
 }
 
 const abortError = () => new DOMException("Export cancelled.", "AbortError");
@@ -43,8 +46,8 @@ export function planLessonExport(lesson: LessonDefinition, scope: LessonExportSc
 }
 
 /**
- * Deterministic, frame-by-frame MP4 (H.264). Every frame is rendered at an exact timeline position,
- * never captured in real time. The MP4 is SILENT: browser speech synthesis cannot be written to a file.
+ * Deterministic, frame-by-frame MP4 (H.264 + optional AAC instructional audio cues).
+ * Every frame is rendered at an exact timeline position, never captured in real time.
  * Narration text ships as a WebVTT subtitle sidecar timed to the same paced timeline.
  */
 export async function exportLessonVideo(options: ExportLessonVideoOptions): Promise<ExportedLessonVideo> {
@@ -57,7 +60,7 @@ export async function exportLessonVideo(options: ExportLessonVideoOptions): Prom
   if (!("VideoEncoder" in window) || !("VideoFrame" in window)) {
     throw new Error("This browser does not provide WebCodecs video encoding. Use a current Chrome, Edge or Safari browser; no substitute file was generated.");
   }
-  const { Output, Mp4OutputFormat, BufferTarget, CanvasSource, canEncodeVideo } = await import("mediabunny");
+  const { Output, Mp4OutputFormat, BufferTarget, CanvasSource, AudioBufferSource, canEncodeVideo, canEncodeAudio } = await import("mediabunny");
   if (!(await canEncodeVideo("avc", { width, height, bitrate, frameRate: fps }))) {
     throw new Error("This browser cannot encode H.264 at 1920×1080. No video was generated. Try a current hardware-accelerated desktop browser.");
   }
@@ -72,6 +75,23 @@ export async function exportLessonVideo(options: ExportLessonVideoOptions): Prom
   output.addVideoTrack(source, { frameRate: fps });
   output.setMetadataTags({ title: `${lesson.title} — PLUMB`, artist: "PLUMB field guide" });
 
+  let audioBuffer: AudioBuffer | null = null;
+  let audioSource: InstanceType<typeof AudioBufferSource> | null = null;
+  const wantAudio = options.includeAudio !== false;
+  if (wantAudio) {
+    try {
+      const audioSupported = await canEncodeAudio("aac", { sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 });
+      if (audioSupported) {
+        audioBuffer = synthesizeLessonAudio(lesson, plan.indices, plan.introSeconds, plan.seconds, 48000);
+        audioSource = new AudioBufferSource({ codec: "aac", bitrate: 128000 });
+        output.addAudioTrack(audioSource);
+      }
+    } catch {
+      audioBuffer = null;
+      audioSource = null;
+    }
+  }
+
   let started = false;
   let done = 0;
   onProgress(0, plan.totalFrames);
@@ -79,6 +99,11 @@ export async function exportLessonVideo(options: ExportLessonVideoOptions): Prom
   try {
     await output.start();
     started = true;
+
+    if (audioSource && audioBuffer) {
+      await audioSource.add(audioBuffer);
+      audioSource.close();
+    }
     // Intro card over the finished result (last step, final pose), fading in over the first second.
     if (plan.introFrames > 0) {
       const last = lesson.steps.length - 1;
@@ -153,7 +178,7 @@ export async function exportLessonVideo(options: ExportLessonVideoOptions): Prom
       vttFileName: `PLUMB-${lesson.id}-${suffix}.vtt`,
       frames: plan.totalFrames,
       seconds: plan.seconds,
-      hasAudio: false,
+      hasAudio: Boolean(audioSource && audioBuffer),
     };
   } catch (error) {
     if (started && output.state !== "finalized" && output.state !== "canceled") await output.cancel();

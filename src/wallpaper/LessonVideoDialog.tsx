@@ -22,6 +22,7 @@ export function LessonVideoDialog({ open, lesson, renderer, currentStep, onClose
   const abortRef = useRef<AbortController | null>(null);
   const [scope, setScope] = useState<LessonExportScope>("lesson");
   const [style, setStyle] = useState<LessonStyle>("room");
+  const [audioEnabled, setAudioEnabled] = useState(true);
   const [status, setStatus] = useState<Status>("idle");
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [message, setMessage] = useState("");
@@ -65,6 +66,7 @@ export function LessonVideoDialog({ open, lesson, renderer, currentStep, onClose
         stepIndex: currentStep,
         style,
         fps: FPS,
+        includeAudio: audioEnabled,
         signal: controller.signal,
         onProgress: (done, total) => setProgress({ done, total }),
       });
@@ -123,10 +125,18 @@ export function LessonVideoDialog({ open, lesson, renderer, currentStep, onClose
                 <strong>CAD line drawing</strong><small>Ink outlines on white</small>
               </button>
             </div>
+            <div className="export-options" role="group" aria-label="Audio soundtrack">
+              <button className={audioEnabled ? "selected" : ""} aria-pressed={audioEnabled} onClick={() => setAudioEnabled(true)}>
+                <strong>Instructional audio cues</strong><small>AAC 48kHz (intro chord, step chimes, tool sounds)</small>
+              </button>
+              <button className={!audioEnabled ? "selected" : ""} aria-pressed={!audioEnabled} onClick={() => setAudioEnabled(false)}>
+                <strong>Silent video</strong><small>Video with .vtt subtitles sidecar only</small>
+              </button>
+            </div>
             <dl className="export-summary">
               <div><dt>Format</dt><dd>1920×1080 · {FPS} fps · H.264 MP4</dd></div>
               <div><dt>Length</dt><dd>{minutes(plan.seconds)} ({plan.totalFrames.toLocaleString()} frames)</dd></div>
-              <div><dt>Audio</dt><dd>None in the file. Subtitle file (.vtt) is provided.</dd></div>
+              <div><dt>Audio</dt><dd>{audioEnabled ? "Stereo AAC (synced tone cues & sound design)" : "Silent in file (WebVTT subtitle sidecar provided)"}</dd></div>
             </dl>
             <p className="dialog-copy">
               Each step is paced so its text can be read or narrated (about 150 words per minute), so the video is longer than the
@@ -150,11 +160,26 @@ export function LessonVideoDialog({ open, lesson, renderer, currentStep, onClose
 
         {status === "done" && result && (
           <div className="export-complete">
-            <CheckCircle2 size={32} />
-            <h3>Your video manual is ready</h3>
-            <p>
-              {result.video.frames.toLocaleString()} frames · {minutes(result.video.seconds)} · {(result.video.blob.size / 1024 / 1024).toFixed(1)} MB · silent
-            </p>
+            <div className="export-complete-header">
+              <CheckCircle2 size={30} />
+              <div>
+                <h3>Your video manual is ready</h3>
+                <p>
+                  {result.video.frames.toLocaleString()} frames · {minutes(result.video.seconds)} · {(result.video.blob.size / 1024 / 1024).toFixed(1)} MB · {result.video.hasAudio ? "AAC audio track" : "Silent"}
+                </p>
+              </div>
+            </div>
+            <div className="export-video-preview">
+              <video
+                controls
+                playsInline
+                preload="metadata"
+                src={result.videoUrl}
+                className="export-preview-player"
+              >
+                <track default kind="subtitles" src={result.vttUrl} srcLang="en" label="English" />
+              </video>
+            </div>
             <div className="export-downloads">
               <a className="next-step-button" href={result.videoUrl} download={result.video.fileName}><Download size={16} /> Download MP4</a>
               <a className="text-button" href={result.vttUrl} download={result.video.vttFileName}><FileText size={16} /> Subtitles (.vtt)</a>

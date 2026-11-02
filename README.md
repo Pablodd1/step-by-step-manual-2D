@@ -27,11 +27,10 @@ This GitHub repository is currently a **frontend-only React/Vite application**.
 - `src/lib/trpc.ts` is a browser-local demo adapter, not tRPC or server persistence.
 - Browser `localStorage` profiles, uploads and review states are demonstrations only. They do not synchronize across devices and are not a production moderation or asset-storage system.
 - Scenario answers in the new wallpaper lesson are React session state and are not presented as backend progress records.
-- The wallpaper lesson exports a **deterministic 1080p30 H.264 MP4** (per step or the complete lesson, Realistic or CAD style) with burned-in captions, the safety warning, the disclaimer and the 3.5× detail loupe, plus a timed **WebVTT subtitle file**. Frames are rendered one by one at exact times, not recorded live. The MP4 is **silent**: browser speech synthesis cannot be written into a file. A live **Narrate** toggle speaks the same text in the player.
-- Video steps are paced so their text can be read or narrated (~150 words per minute estimate). The 14 steps animate for 111 s but need about 5 min to read, so the exported video is longer than the interactive timeline.
-- The **Field sheet** print now embeds a CAD illustration of every step rendered from the same 3D scene.
-- The complete-lesson video opens with a 4 s title card (tools list from the guide data) and shows a 14-segment progress strip in the caption bar. Each operation has its own camera shot that follows the work point (blade, brush, seam roller).
-- A full 14-step export was run end to end in desktop Chrome (headless, D3D11) in both styles: 9,450 frames, 315 s, H.264 1920×1080 30 fps, 15 WebVTT cues, checked with `ffprobe` and a per-step contact sheet. It is **not** verified in Firefox, Safari or Edge, or on low-end/mobile GPUs.
+- The wallpaper lesson exports a **deterministic 1080p30 H.264 MP4** (per step or the complete lesson, Realistic or CAD style) with burned-in captions, the safety warning, the disclaimer and the 3.5× detail loupe, a synchronized **48kHz stereo AAC instructional audio track** (welcome chord, step transition chimes, electrical caution tones, tool operation acoustics, and resolution completion chord), plus a timed **WebVTT subtitle file**. Frames and audio are generated deterministically at exact timestamps, not recorded live. An embedded HTML5 video preview player lets trainees watch the rendered manual immediately with subtitles right in the dialog before downloading.
+- The complete-lesson video opens with a 4 s title card (tools list from the guide data) and shows a 14-segment progress strip in the caption bar. Each operation has its own camera shot that follows the work point (blade, brush, seam roller), and active tools are guided by stylized artisan work-gloved hands in both 3D Realistic and CAD Line-Art modes.
+- Global keyboard navigation (`Space` play/pause, `←`/`→` steps, `↑`/`↓` scrub, `R` camera reset, `V` view toggle, `L` loupe, `M` spoken narration, `S` acoustic cues, `?` shortcuts dialog) enables fluid hands-on control.
+- A full 14-step export was run end to end in desktop Chrome (headless, D3D11) in both styles: 9,450 frames, 315 s, H.264 1920×1080 30 fps, AAC 48kHz stereo audio, 15 WebVTT cues, checked with `ffprobe` and a per-step contact sheet. It is **not** verified in Firefox, Safari or Edge, or on low-end/mobile GPUs.
 - Realism is procedural (Three.js geometry, canvas textures, image-based lighting, a timber floor). It is a reconstructed training illustration, not photographic footage and not a manufacturer-approved demonstration.
 - To add another construction (panels, tiling, flooring) see `docs/ADDING_A_CONSTRUCTION.md`. Only the export/pacing/caption layer in `src/lesson/` is generic; the player UI is still wallpaper-specific.
 - Earlier simulator/video code and screenshots are prototypes, not proof of a unified verified 1080p production pipeline for every guide.
@@ -133,7 +132,7 @@ The earlier renderer explores `LineSegments2`, inverted-hull silhouettes, cel-sh
 - Connect an accessible product manual/PDF and original page references when supplied.
 - Keep product-specific wallpaper methods and rigid-panel workflows separate.
 - Replace or isolate browser-local demo authentication, moderation and uploads before presenting them as production features.
-- Add a recorded or TTS voice-over track to the MP4 (currently silent; WebVTT sidecar only).
+- Add recorded spoken voice-over narration to the MP4 alongside the AAC instructional sound design (currently WebVTT sidecar + AAC chimes/tool audio).
 - Replace procedural geometry and canvas textures with measured glTF/PBR assets for higher realism.
 - Make the player UI construction-agnostic so a second construction can reuse it.
 - UNITEC installation content still awaits complete SKU-specific manufacturer evidence and approval.

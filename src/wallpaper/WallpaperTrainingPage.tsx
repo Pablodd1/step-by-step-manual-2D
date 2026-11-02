@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import {
   AlertTriangle,
+  Bell,
   BookOpen,
   Box,
   Check,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Keyboard,
   LockKeyhole,
   Pause,
   Play,
@@ -29,6 +31,7 @@ import { ReferenceDrawing } from "./ReferenceDrawing";
 import { LearningCheck } from "./LearningCheck";
 import { LessonVideoDialog } from "./LessonVideoDialog";
 import { wallpaperLesson } from "./lesson";
+import { playLiveStepCue } from "../lesson/audioEngine";
 import { pacedStepSeconds, spokenText } from "../lesson/pacing";
 import {
   canAccessStep,
@@ -90,6 +93,48 @@ function EvidenceDialog({ open, onClose }: { open: boolean; onClose: () => void 
             </li>
           ))}
         </ol>
+      </div>
+    </dialog>
+  );
+}
+
+function ShortcutsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (!dialog) return;
+    if (open && !dialog.open) dialog.showModal();
+    if (!open && dialog.open) dialog.close();
+  }, [open]);
+
+  return (
+    <dialog
+      ref={ref}
+      className="evidence-dialog shortcuts-dialog"
+      onClose={onClose}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="evidence-dialog-inner">
+        <header>
+          <div>
+            <span className="ui-label">Interactive 3D field manual</span>
+            <h2>Keyboard shortcuts</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="Close keyboard shortcuts"><X size={19} /></button>
+        </header>
+        <div className="shortcuts-grid">
+          <div><kbd>Space</kbd><span>Play / Pause step animation</span></div>
+          <div><kbd>→</kbd> / <kbd>←</kbd><span>Next / Previous installation step</span></div>
+          <div><kbd>↑</kbd> / <kbd>↓</kbd><span>Scrub timeline forward / backward</span></div>
+          <div><kbd>R</kbd><span>Reset camera to active work point</span></div>
+          <div><kbd>V</kbd><span>Toggle Realistic 3D / CAD Line-Art</span></div>
+          <div><kbd>L</kbd><span>Toggle 3.5× Detail Loupe</span></div>
+          <div><kbd>M</kbd><span>Toggle Spoken Voice Narration</span></div>
+          <div><kbd>S</kbd><span>Toggle Acoustic Step Cues</span></div>
+          <div><kbd>?</kbd><span>Open this shortcuts help window</span></div>
+        </div>
       </div>
     </dialog>
   );
@@ -160,6 +205,8 @@ export default function WallpaperTrainingPage() {
   const [sceneReady, setSceneReady] = useState(false);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [narrate, setNarrate] = useState(false);
+  const [soundCues, setSoundCues] = useState(true);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
   const [stepImages, setStepImages] = useState<string[]>([]);
   const [preparingSheet, setPreparingSheet] = useState(false);
@@ -307,6 +354,65 @@ export default function WallpaperTrainingPage() {
     setPlaying(true);
   };
 
+  // Play subtle acoustic cue on step change if sound cues are enabled
+  useEffect(() => {
+    if (soundCues) {
+      playLiveStepCue(steps[current]);
+    }
+  }, [current, soundCues]);
+
+  // Global keyboard shortcuts for fluid manual navigation
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (event.key === " " || event.code === "Space") {
+        event.preventDefault();
+        playForward();
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        goTo(current + 1);
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        goTo(current - 1);
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault();
+        setProgress(Math.min(1, progressRef.current + 0.08));
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault();
+        setProgress(Math.max(0, progressRef.current - 0.08));
+      } else if (event.key === "r" || event.key === "R") {
+        event.preventDefault();
+        sceneRef.current?.resetCamera(step.operation);
+      } else if (event.key === "v" || event.key === "V") {
+        event.preventDefault();
+        setView((prev) => (prev === "room" ? "drawing" : "room"));
+      } else if (event.key === "l" || event.key === "L") {
+        event.preventDefault();
+        setShowLoupe((prev) => !prev);
+      } else if (event.key === "m" || event.key === "M") {
+        event.preventDefault();
+        setNarrate((prev) => !prev);
+      } else if (event.key === "s" || event.key === "S") {
+        event.preventDefault();
+        setSoundCues((prev) => !prev);
+      } else if (event.key === "?" || (event.shiftKey && event.key === "/")) {
+        event.preventDefault();
+        setShortcutsOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [current, goTo, playForward, setProgress, step.operation]);
+
   const completedPhases = useMemo(() => new Set(steps.slice(0, current).map((item) => item.phase)).size, [current]);
   const correctChecks = useMemo(() => steps.filter((item) => answers[item.id] === item.checkpoint.answer).length, [answers]);
 
@@ -405,14 +511,31 @@ export default function WallpaperTrainingPage() {
               className={`icon-button ${narrate ? "active" : ""}`}
               onClick={() => setNarrate((v) => !v)}
               disabled={!speechSupported}
-              title={speechSupported ? "Narrate each step aloud (playback slows to match speech)" : "Speech narration is not available in this browser"}
+              title={speechSupported ? "Narrate each step aloud [M]" : "Speech narration is not available in this browser"}
               aria-label="Toggle narration"
               aria-pressed={narrate}
             >
               {narrate ? <Volume2 size={16} /> : <VolumeX size={16} />}
             </button>
+            <button
+              className={`icon-button ${soundCues ? "active" : ""}`}
+              onClick={() => setSoundCues((v) => !v)}
+              title="Toggle instructional audio cues [S]"
+              aria-label="Toggle audio cues"
+              aria-pressed={soundCues}
+            >
+              <Bell size={16} />
+            </button>
+            <button
+              className="icon-button"
+              onClick={() => setShortcutsOpen(true)}
+              title="Keyboard shortcuts [?]"
+              aria-label="Keyboard shortcuts"
+            >
+              <Keyboard size={16} />
+            </button>
             <div className="stage-step-readout"><span>STEP {String(current + 1).padStart(2, "0")}</span><strong>{step.shortTitle}</strong></div>
-            <button className="icon-button" onClick={() => sceneRef.current?.resetCamera(step.operation)} title="Reset camera" aria-label="Reset camera"><RotateCcw size={17} /></button>
+            <button className="icon-button" onClick={() => sceneRef.current?.resetCamera(step.operation)} title="Reset camera [R]" aria-label="Reset camera"><RotateCcw size={17} /></button>
           </div>
           <div className="scene-host" ref={hostRef}>
             {!sceneReady && <div className="scene-loading">Preparing the training wall…</div>}
@@ -480,6 +603,7 @@ export default function WallpaperTrainingPage() {
 
       <footer className="training-disclaimer"><AlertTriangle size={14} /><span>General teaching demo, not a substitute for the roll label, adhesive datasheet, site risk assessment or qualified electrical work.</span><button onClick={() => setEvidenceOpen(true)}>Review source boundaries</button></footer>
       <EvidenceDialog open={evidenceOpen} onClose={() => setEvidenceOpen(false)} />
+      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <LessonVideoDialog open={videoOpen} lesson={wallpaperLesson} renderer={sceneRef.current} currentStep={current} onClose={() => setVideoOpen(false)} />
       <PrintFieldSheet images={stepImages} />
     </div>
