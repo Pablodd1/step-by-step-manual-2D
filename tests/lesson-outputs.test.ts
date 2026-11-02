@@ -12,7 +12,7 @@ import {
   videoProgress,
 } from "../src/lesson/pacing";
 import { buildWebVtt, captionForStep, fitFontSize, wrapText } from "../src/lesson/captions";
-import { planLessonExport } from "../src/lesson/exportLessonVideo";
+import { INTRO_SECONDS, planLessonExport } from "../src/lesson/exportLessonVideo";
 
 const steps = wallpaperLesson.steps;
 
@@ -100,17 +100,31 @@ describe("subtitles and captions", () => {
 });
 
 describe("export planning", () => {
-  it("plans frames from paced time, not animation time", () => {
+  it("plans frames from paced time plus a 4 s intro card, not animation time", () => {
     const plan = planLessonExport(wallpaperLesson, "lesson", 0, 30);
     expect(plan.indices).toHaveLength(14);
-    expect(plan.totalFrames).toBe(plan.perStepFrames.reduce((a, b) => a + b, 0));
+    expect(plan.introFrames).toBe(INTRO_SECONDS * 30);
+    expect(plan.totalFrames).toBe(plan.introFrames + plan.perStepFrames.reduce((a, b) => a + b, 0));
     expect(plan.totalFrames).toBeGreaterThan(111 * 30);
-    expect(plan.seconds).toBeCloseTo(pacedTotalSeconds(steps), 6);
+    expect(plan.seconds).toBeCloseTo(INTRO_SECONDS + pacedTotalSeconds(steps), 6);
   });
 
-  it("plans a single step", () => {
+  it("subtitle cues are shifted by the intro so they stay in sync with the video", () => {
+    const vtt = buildWebVtt(wallpaperLesson, INTRO_SECONDS);
+    expect(vtt).toContain(`00:00:00.000 --> 00:00:0${INTRO_SECONDS}.000`);
+    expect(vtt).toContain(`1\n00:00:0${INTRO_SECONDS}.000 -->`);
+  });
+
+  it("every tool named on the intro card exists in the guide data", () => {
+    const allTools = steps.flatMap((s) => s.tools).join(" ").toLowerCase();
+    const named = wallpaperLesson.introLines![0].replace(/^You need:\s*/, "").replace(/\.$/, "").split(/,\s*/);
+    for (const tool of named) expect(allTools).toContain(tool.toLowerCase());
+  });
+
+  it("plans a single step without an intro", () => {
     const plan = planLessonExport(wallpaperLesson, "step", 6, 30);
     expect(plan.indices).toEqual([6]);
+    expect(plan.introFrames).toBe(0);
     expect(plan.totalFrames).toBe(Math.round(pacedStepSeconds(steps[6]) * 30));
   });
 

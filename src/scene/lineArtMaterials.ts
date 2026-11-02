@@ -447,6 +447,7 @@ export function dimensionLineSvg(a: Pt2, b: Pt2, offsetPx: number, label: string
     `<path d="M${a1x.toFixed(1)},${a1y.toFixed(1)}L${b1x.toFixed(1)},${b1y.toFixed(1)}` +
     `M${(a1x + ux * tk + nx * tw).toFixed(1)},${(a1y + uy * tk + ny * tw).toFixed(1)}L${a1x.toFixed(1)},${a1y.toFixed(1)}L${(a1x + ux * tk - nx * tw).toFixed(1)},${(a1y + uy * tk - ny * tw).toFixed(1)}` +
     `M${(b1x - ux * tk + nx * tw).toFixed(1)},${(b1y - uy * tk + ny * tw).toFixed(1)}L${b1x.toFixed(1)},${b1y.toFixed(1)}L${(b1x - ux * tk - nx * tw).toFixed(1)},${(b1y - uy * tk - ny * tw).toFixed(1)}" stroke="#141414" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round" fill="none" />` +
-    `<text x="${mx.toFixed(1)}" y="${(my + 4).toFixed(1)}" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11.5" font-weight="800" fill="#141414" text-anchor="middle" stroke="#ffffff" stroke-width="4" paint-order="stroke">${label}</text>`
+    `<rect x="${(mx - label.length * 3.6 - 6).toFixed(1)}" y="${(my - 9).toFixed(1)}" width="${(label.length * 7.2 + 12).toFixed(1)}" height="18" rx="9" fill="#ffffff" stroke="#141414" stroke-width="1" />` +
+    `<text x="${mx.toFixed(1)}" y="${(my + 4).toFixed(1)}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11.5" font-weight="700" fill="#141414" text-anchor="middle">${label}</text>`
   );
 }

@@ -1,6 +1,9 @@
-import { buildWebVtt, captionForStep } from "./captions";
+import { buildWebVtt, captionForStep, drawTitleCard } from "./captions";
 import { pacedStepSeconds, pacedTotalSeconds, videoProgress } from "./pacing";
 import type { LessonDefinition, LessonRenderer, LessonStyle } from "./types";
+
+/** Length of the intro card that opens a complete-lesson video (shows the finished result). */
+export const INTRO_SECONDS = 4;
 
 export type LessonExportScope = "lesson" | "step";
 
@@ -32,9 +35,11 @@ const abortError = () => new DOMException("Export cancelled.", "AbortError");
 export function planLessonExport(lesson: LessonDefinition, scope: LessonExportScope, stepIndex: number, fps = 30) {
   const indices = scope === "step" ? [stepIndex] : lesson.steps.map((_, i) => i);
   const perStepFrames = indices.map((i) => Math.max(1, Math.round(pacedStepSeconds(lesson.steps[i]) * fps)));
-  const totalFrames = perStepFrames.reduce((a, b) => a + b, 0);
-  const seconds = scope === "step" ? pacedStepSeconds(lesson.steps[stepIndex]) : pacedTotalSeconds(lesson.steps);
-  return { indices, perStepFrames, totalFrames, seconds };
+  const introSeconds = scope === "lesson" ? INTRO_SECONDS : 0;
+  const introFrames = Math.round(introSeconds * fps);
+  const totalFrames = introFrames + perStepFrames.reduce((a, b) => a + b, 0);
+  const seconds = introSeconds + (scope === "step" ? pacedStepSeconds(lesson.steps[stepIndex]) : pacedTotalSeconds(lesson.steps));
+  return { indices, perStepFrames, introFrames, introSeconds, totalFrames, seconds };
 }
 
 /**
@@ -74,6 +79,42 @@ export async function exportLessonVideo(options: ExportLessonVideoOptions): Prom
   try {
     await output.start();
     started = true;
+    // Intro card over the finished result (last step, final pose), fading in over the first second.
+    if (plan.introFrames > 0) {
+      const last = lesson.steps.length - 1;
+      const ctx = canvas.getContext("2d");
+      for (let f = 0; f < plan.introFrames; f += 1) {
+        if (signal.aborted) throw abortError();
+        await renderer.renderLessonFrame(canvas, {
+          stepIndex: last,
+          progress: 1,
+          operation: lesson.steps[last].operation,
+          width,
+          height,
+          overlays: false,
+        });
+        ctx?.save();
+        drawTitleCard(
+          canvas.getContext("2d")!,
+          width,
+          height,
+          {
+            kicker: "PLUMB VIDEO MANUAL",
+            title: lesson.title,
+            lines: [`${lesson.steps.length} steps · ${Math.round(pacedTotalSeconds(lesson.steps) / 60)} min`, ...(lesson.introLines ?? [])],
+            footer: lesson.disclaimer,
+          },
+          Math.min(1, f / fps / 0.8),
+        );
+        ctx?.restore();
+        await source.add(done / fps, 1 / fps);
+        done += 1;
+        if (done % 3 === 0) {
+          onProgress(done, plan.totalFrames);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+      }
+    }
     for (let k = 0; k < plan.indices.length; k += 1) {
       const index = plan.indices[k];
       const step = lesson.steps[index];
@@ -108,7 +149,7 @@ export async function exportLessonVideo(options: ExportLessonVideoOptions): Prom
     return {
       blob: new Blob([target.buffer], { type: "video/mp4" }),
       fileName: `PLUMB-${lesson.id}-${suffix}-1080p${fps}.mp4`,
-      vtt: buildWebVtt(vttLesson),
+      vtt: buildWebVtt(vttLesson, plan.introSeconds),
       vttFileName: `PLUMB-${lesson.id}-${suffix}.vtt`,
       frames: plan.totalFrames,
       seconds: plan.seconds,

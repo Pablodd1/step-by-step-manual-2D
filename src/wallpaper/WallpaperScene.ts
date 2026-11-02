@@ -675,7 +675,7 @@ export class WallpaperScene implements LessonRenderer {
 
     // The patterned paper keeps its printed texture in BOTH styles (outlines are added on top), so pattern-match
     // steps stay meaningful in the line-drawing style instead of turning into blank cream sheets.
-    this.paperMeshes = [...this.drops, ...this.rolls, this.displayRoll, this.overhangStrip].map((mesh) => ({
+    this.paperMeshes = [...this.drops, ...this.rolls, this.displayRoll, this.overhangStrip, this.productLabel].map((mesh) => ({
       mesh,
       material: mesh.material as THREE.Material,
     }));
@@ -748,6 +748,10 @@ export class WallpaperScene implements LessonRenderer {
     }
     position.needsUpdate = true;
     drop.geometry.computeVertexNormals();
+    // The vertices move every seek; refresh bounds or Three.js frustum-culls the drop using a stale
+    // (collapsed) bounding sphere, which made hung paper vanish in low/close camera shots.
+    drop.geometry.computeBoundingSphere();
+    drop.geometry.computeBoundingBox();
     const roll = this.rolls[index];
     roll.visible = visible && p > 0.001 && p < 0.995;
     roll.position.y = WALL_H / 2 + threshold;
@@ -784,10 +788,8 @@ export class WallpaperScene implements LessonRenderer {
     this.currentProgress = p;
     this.currentOperation = operation;
     if (!this.exporting) this.lastSeek = { stepIndex, progress: p, operation };
-    if (stepIndex !== this.currentStep) {
-      this.currentStep = stepIndex;
-      this.resetCamera(operation);
-    }
+    const stepChanged = stepIndex !== this.currentStep;
+    this.currentStep = stepIndex;
     this.hideTools();
     this.displayRoll.visible = operation === "verify";
     this.productLabel.visible = operation === "verify";
@@ -823,7 +825,7 @@ export class WallpaperScene implements LessonRenderer {
         this.voltageTester.rotation.set(0.35, 0, 0.28);
         this.focusWorld.set(OUTLET.x, OUTLET.y, 0.05);
         this.detailCamOffset.set(0.14, 0.06, 0.36);
-        this.detailTagEl.textContent = "3.5× ZERO-VOLTAGE TEST";
+        this.detailTagEl.textContent = "3.5× VERIFY ISOLATION";
         break;
       }
       case "prepare": {
@@ -862,7 +864,7 @@ export class WallpaperScene implements LessonRenderer {
         this.tape.scale.y = 0.15 + p * 0.85;
         this.focusWorld.set(FIRST_X - 0.1, 0.22 + p * 1.85, 0.08);
         this.detailCamOffset.set(0.18, 0.06, 0.46);
-        this.detailTagEl.textContent = "3.5× HEIGHT + 100 MM TRIM";
+        this.detailTagEl.textContent = "3.5× HEIGHT + 2–3 CM TOP ALLOWANCE";
         break;
       }
       case "paste": {
@@ -881,7 +883,7 @@ export class WallpaperScene implements LessonRenderer {
           );
           this.roller.rotation.z = Math.sin(rollerProgress * 18) * 0.12;
           this.focusWorld.copy(this.roller.position);
-          this.detailTagEl.textContent = "3.5× ROLLER PASTE LANE (+35 MM)";
+          this.detailTagEl.textContent = "3.5× PASTE SLIGHTLY WIDER THAN DROP";
         } else {
           this.pasteBrush.visible = true;
           const brushProgress = (p - 0.72) / 0.28;
@@ -936,7 +938,7 @@ export class WallpaperScene implements LessonRenderer {
 
         this.focusWorld.set(this.knife.position.x, yJunction, 0.06);
         this.detailCamOffset.set(0.14, top ? -0.06 : 0.08, 0.38);
-        this.detailTagEl.textContent = top ? "3.5× CORNICE STRAIGHTEDGE TRIM" : "3.5× SKIRTING 30° BLADE TRIM";
+        this.detailTagEl.textContent = top ? "3.5× CORNICE STRAIGHTEDGE TRIM" : "3.5× SKIRTING GUIDED BLADE TRIM";
         break;
       }
       case "match": {
@@ -964,7 +966,7 @@ export class WallpaperScene implements LessonRenderer {
           this.focusWorld.copy(this.smoother.position);
         }
         this.detailCamOffset.set(0.16, 0.05, 0.4);
-        this.detailTagEl.textContent = "3.5× BUTT-SEAM PATTERN MATCH";
+        this.detailTagEl.textContent = "3.5× PATTERN MATCH AT THE SEAM";
         break;
       }
       case "outlet": {
@@ -983,7 +985,7 @@ export class WallpaperScene implements LessonRenderer {
 
         this.focusWorld.set(OUTLET.x, OUTLET.y, 0.055);
         this.detailCamOffset.set(0.13, 0.05, 0.34);
-        this.detailTagEl.textContent = "3.5× OUTLET 4-FLAP X-RELIEF CUT";
+        this.detailTagEl.textContent = "3.5× OUTLET RELIEF CUTS (POWER OFF)";
         break;
       }
       case "clean": {
@@ -1004,6 +1006,35 @@ export class WallpaperScene implements LessonRenderer {
     }
     if (operation !== "outlet") this.knife.scale.setScalar(1);
     this.applyCurrentViewMaterials();
+    // Camera framing depends on the work point computed above, so apply it last.
+    // Interactive: frame once per step (the user may orbit freely afterwards). Export: follow every frame.
+    if (this.exporting || stepChanged) this.cameraPreset(operation);
+  }
+
+  /**
+   * Per-operation "shot": the camera looks at a blend of a fixed anchor and the moving work point, from an
+   * operation-specific offset. A pure function of (operation, progress), so exported video is deterministic.
+   */
+  private shotFor(operation: Operation): { anchor: THREE.Vector3 | null; follow: number; offset: THREE.Vector3 } {
+    const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+    const top = this.currentProgress < 0.5;
+    switch (operation) {
+      case "verify": return { anchor: v(-0.72, 0.26, 0.42), follow: 0, offset: v(0.62, 0.5, 1.45) };
+      case "safety": return { anchor: null, follow: 1, offset: v(0.26, 0.1, 0.72) };
+      case "prepare": return { anchor: v(-0.25, 1.0, 0.1), follow: 0.5, offset: v(0.4, 0.12, 1.55) };
+      case "layout": return { anchor: v(FIRST_X + DROP_W * 0.75, 1.45, 0.05), follow: 0.25, offset: v(0.5, 0.1, 2.3) };
+      case "plumb": return { anchor: v(LEFT + 0.5, 1.35, 0.05), follow: 0.8, offset: v(0.34, 0.05, 1.15) };
+      case "measure": return { anchor: v(FIRST_X, 1.3, 0.05), follow: 0.3, offset: v(0.65, 0.05, 2.55) };
+      case "paste": return { anchor: v(FIRST_X, 1.45, 0.05), follow: 0.35, offset: v(0.5, 0.05, 1.85) };
+      case "hang": return { anchor: v(FIRST_X, 1.35, 0.05), follow: 0.5, offset: v(0.6, 0.1, 2.25) };
+      case "smooth": return { anchor: null, follow: 0.75, offset: v(0.34, 0.05, 1.25) };
+      case "trim": return { anchor: null, follow: 1, offset: top ? v(0.32, -0.16, 0.85) : v(0.32, 0.26, 0.85) };
+      case "match": return { anchor: v(FIRST_X + DROP_W * 0.5, 1.4, 0.05), follow: 0.4, offset: v(0.42, 0.05, 1.85) };
+      case "outlet": return { anchor: null, follow: 1, offset: v(0.24, 0.09, 0.62) };
+      case "clean": return { anchor: null, follow: 0.6, offset: v(0.34, 0.05, 1.25) };
+      case "inspect": return { anchor: v(-0.03, 1.35, 0.05), follow: 0, offset: v(1.25, 0.15, 4.25) };
+      default: return { anchor: v(0, 1.3, 0), follow: 0, offset: v(3.45, 1.05, 4.95) };
+    }
   }
 
   private projectToScreen(world: THREE.Vector3, w: number, h: number): Pt2 {
@@ -1093,7 +1124,7 @@ export class WallpaperScene implements LessonRenderer {
     if (op === "measure") {
       const pBot = this.projectToScreen(new THREE.Vector3(FIRST_X - DROP_W / 2, 0.05, 0.03), w, h);
       const pTop = this.projectToScreen(new THREE.Vector3(FIRST_X - DROP_W / 2, 2.67, 0.03), w, h);
-      parts.push(dimensionLineSvg(pBot, pTop, -28, "2640 mm + 100 mm TRIM"));
+      parts.push(dimensionLineSvg(pBot, pTop, 34, "MEASURED HEIGHT + 2–3 cm TOP"));
     }
     if (op === "paste" || op === "hang" || op === "plumb") {
       const a = this.projectToScreen(new THREE.Vector3(this.focusWorld.x, this.focusWorld.y + 0.28, 0.12), w, h);
@@ -1123,36 +1154,14 @@ export class WallpaperScene implements LessonRenderer {
     this.leadsSvg.innerHTML = parts.join("");
   }
 
-  private cameraPreset(operation?: Operation) {
-    const closeOperations: Operation[] = ["plumb", "measure", "paste", "hang", "smooth", "trim"];
-    if (this.view === "drawing") {
-      if (operation === "verify") {
-        this.camera.position.set(0.35, 0.92, 2.25);
-        this.controls.target.set(-0.72, 0.22, 0.4);
-      } else if (operation === "safety" || operation === "outlet") {
-        this.camera.position.set(OUTLET.x + 0.28, 1.32, 1.55);
-        this.controls.target.set(OUTLET.x, OUTLET.y, 0);
-      } else {
-        this.camera.position.set(FIRST_X + 0.45, 1.42, 3.65);
-        this.controls.target.set(FIRST_X + 0.15, 1.35, 0);
-      }
-    } else if (operation === "verify") {
-      this.camera.position.set(0.55, 1.0, 2.5);
-      this.controls.target.set(-0.72, 0.22, 0.4);
-    } else if (operation === "safety" || operation === "outlet") {
-      this.camera.position.set(OUTLET.x + 0.45, 1.45, 1.75);
-      this.controls.target.set(OUTLET.x, OUTLET.y, 0);
-    } else if (operation && closeOperations.includes(operation)) {
-      this.camera.position.set(FIRST_X + 0.75, 1.52, 3.35);
-      this.controls.target.set(FIRST_X, 1.36, 0);
-    } else if (operation === "clean") {
-      this.camera.position.set(FIRST_X + 1.1, 1.55, 2.4);
-      this.controls.target.set(FIRST_X + DROP_W / 2, 1.35, 0);
-    } else {
-      this.camera.position.set(3.45, 2.35, 4.95);
-      this.controls.target.set(0, 1.3, 0);
-    }
-    this.camera.lookAt(this.controls.target);
+  private cameraPreset(operation: Operation = this.currentOperation) {
+    const shot = this.shotFor(operation);
+    const target = shot.anchor
+      ? shot.anchor.clone().lerp(this.focusWorld, shot.follow)
+      : this.focusWorld.clone();
+    this.controls.target.copy(target);
+    this.camera.position.copy(target).add(shot.offset);
+    this.camera.lookAt(target);
     this.controls.update();
   }
 
@@ -1210,9 +1219,8 @@ export class WallpaperScene implements LessonRenderer {
     const LH = WallpaperScene.LOGICAL_H;
     if (Math.abs(width / height - LW / LH) > 0.01) throw new Error("Lesson frames must be 16:9.");
 
-    const stepChanged = request.stepIndex !== this.currentStep;
+    // seek() applies the per-frame follow shot while exporting.
     this.seek(request.stepIndex, request.progress, request.operation as Operation);
-    if (stepChanged) this.cameraPreset(request.operation as Operation);
 
     this.renderer.setPixelRatio(1);
     this.renderer.setSize(width, height, false);
@@ -1238,9 +1246,10 @@ export class WallpaperScene implements LessonRenderer {
     ctx.drawImage(this.renderer.domElement, 0, 0, width, height);
 
     // Loupe pass + SVG overlays are computed in logical space, then scaled onto the frame.
-    this.renderOverlays(LW, LH);
+    const overlays = request.overlays !== false;
+    if (overlays) this.renderOverlays(LW, LH);
     const k = width / LW;
-    if (this.leadsSvg.childNodes.length > 0) {
+    if (overlays && this.leadsSvg.childNodes.length > 0) {
       const clone = this.leadsSvg.cloneNode(true) as SVGSVGElement;
       clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
       clone.setAttribute("width", String(LW));
@@ -1251,7 +1260,7 @@ export class WallpaperScene implements LessonRenderer {
       await image.decode();
       ctx.drawImage(image, 0, 0, width, height);
     }
-    if (this.showLoupe) {
+    if (overlays && this.showLoupe) {
       const size = 192 * k;
       const x = width - 16 * k - size;
       const y = 16 * k;
@@ -1281,7 +1290,7 @@ export class WallpaperScene implements LessonRenderer {
       ctx.fillStyle = drawing ? "#141414" : "#22d3ee";
       ctx.fillText(tag, x + size - tw + 8 * k, ty + 14 * k);
     }
-    if (request.caption) drawCaptionBar(ctx, width, height, request.caption);
+    if (request.caption) drawCaptionBar(ctx, width, height, request.caption, request.progress);
   }
 
   endExport() {

@@ -7,5 +7,9 @@ export const wallpaperLesson: LessonDefinition<WallpaperStep> = {
   title: pasteTheWallGuide.title,
   disclaimer:
     "General teaching demo. Not a substitute for the roll label, adhesive datasheet, site risk assessment or qualified electrical work.",
+  introLines: [
+    "You need: roller and tray, paste brush, smoother, sharp craft knife, straight edge, spirit level, tape measure, sponge, step ladder.",
+    "Electrical safety is checked before any wet work near the outlet.",
+  ],
   steps: pasteTheWallGuide.steps,
 };

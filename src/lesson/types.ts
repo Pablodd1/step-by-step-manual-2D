@@ -24,6 +24,8 @@ export interface LessonDefinition<S extends LessonStepLike = LessonStepLike> {
   title: string;
   /** Burned into every exported frame. */
   disclaimer: string;
+  /** Short lines shown on the video intro card (e.g. what you need). Optional. */
+  introLines?: string[];
   steps: S[];
 }
 
@@ -33,6 +35,9 @@ export interface FrameCaption {
   body: string;
   warning?: string;
   footer: string;
+  /** 0-based step index and total, used to draw the lesson progress strip. */
+  stepIndex: number;
+  stepCount: number;
 }
 
 export interface LessonFrameRequest {
@@ -43,6 +48,8 @@ export interface LessonFrameRequest {
   width: number;
   height: number;
   caption?: FrameCaption;
+  /** Draw the detail loupe and motion/dimension overlays (default true). */
+  overlays?: boolean;
 }
 
 export type LessonStyle = "room" | "drawing";

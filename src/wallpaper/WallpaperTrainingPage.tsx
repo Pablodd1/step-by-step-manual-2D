@@ -175,6 +175,7 @@ export default function WallpaperTrainingPage() {
     if (!hostRef.current) return;
     const scene = new WallpaperScene(hostRef.current);
     sceneRef.current = scene;
+    if (import.meta.env.DEV) (window as unknown as { __wallpaperScene?: WallpaperScene }).__wallpaperScene = scene;
     setSceneReady(true);
     const observer = new ResizeObserver(() => scene.resize());
     observer.observe(hostRef.current);
