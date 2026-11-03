@@ -243,10 +243,26 @@ export default function WallpaperTrainingPage() {
   const speechSupported = typeof window !== "undefined" && "speechSynthesis" in window;
   const step = steps[current];
 
+  const currentRef = useRef(current);
+  currentRef.current = current;
+
+  const syncFromScene = useCallback((scene: WallpaperScene) => {
+    const tools = scene.activeToolIds();
+    setActiveTools((prev) => (prev.join() === tools.join() ? prev : tools));
+    const wp = scene.workPoint();
+    setWorkPoint((prev) => (prev && Math.abs(prev.x - wp.x) < 0.002 && Math.abs(prev.y - wp.y) < 0.002 ? prev : wp));
+  }, []);
+
   const setProgress = useCallback((value: number) => {
     progressRef.current = value;
     setProgressState(value);
-  }, []);
+    const scene = sceneRef.current;
+    if (scene) {
+      const idx = currentRef.current;
+      scene.seek(idx, value, steps[idx].operation);
+      syncFromScene(scene);
+    }
+  }, [syncFromScene]);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -266,12 +282,9 @@ export default function WallpaperTrainingPage() {
   useEffect(() => {
     const scene = sceneRef.current;
     if (!scene) return;
-    scene.seek(current, progress, step.operation);
-    const tools = scene.activeToolIds();
-    setActiveTools((prev) => (prev.join() === tools.join() ? prev : tools));
-    const wp = scene.workPoint();
-    setWorkPoint((prev) => (prev && Math.abs(prev.x - wp.x) < 0.002 && Math.abs(prev.y - wp.y) < 0.002 ? prev : wp));
-  }, [current, progress, step.operation, sceneReady, exploded]);
+    scene.seek(current, progressRef.current, step.operation);
+    syncFromScene(scene);
+  }, [current, step.operation, sceneReady, exploded, syncFromScene]);
 
   useEffect(() => {
     sceneRef.current?.setShowCallouts(showCallouts);
@@ -321,7 +334,8 @@ export default function WallpaperTrainingPage() {
       if (next >= 1) {
         if (current < steps.length - 1 && canAccessStep(current + 1, electricalCleared)) {
           changedStep = true;
-          setCurrent((value) => value + 1);
+          currentRef.current = current + 1;
+          setCurrent(current + 1);
           setProgress(0);
         } else {
           next = 1;
@@ -331,7 +345,8 @@ export default function WallpaperTrainingPage() {
       } else if (next <= 0) {
         if (current > 0) {
           changedStep = true;
-          setCurrent((value) => value - 1);
+          currentRef.current = current - 1;
+          setCurrent(current - 1);
           setProgress(1);
         } else {
           next = 0;
@@ -350,12 +365,15 @@ export default function WallpaperTrainingPage() {
   const goTo = useCallback((index: number) => {
     setPlaying(false);
     if (!canAccessStep(index, electricalCleared)) {
+      currentRef.current = 1;
       setCurrent(1);
       setProgress(0);
       setGateNotice(true);
       return;
     }
-    setCurrent(Math.max(0, Math.min(steps.length - 1, index)));
+    const clamped = Math.max(0, Math.min(steps.length - 1, index));
+    currentRef.current = clamped;
+    setCurrent(clamped);
     setProgress(0);
     setGateNotice(false);
   }, [electricalCleared, setProgress]);
@@ -369,6 +387,7 @@ export default function WallpaperTrainingPage() {
       return;
     }
     setPlaying(false);
+    currentRef.current = index;
     setCurrent(index);
     setProgress(Math.max(0, Math.min(1, (value - offsets[index]) / steps[index].seconds)));
   };
@@ -379,6 +398,7 @@ export default function WallpaperTrainingPage() {
       return;
     }
     if (globalTime >= totalAnimationSeconds - 0.01) {
+      currentRef.current = 0;
       setCurrent(0);
       setProgress(0);
     } else if (progress >= 1) setProgress(0);
@@ -415,13 +435,14 @@ export default function WallpaperTrainingPage() {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (
+      const isTextInput =
         target &&
-        (target.tagName === "INPUT" ||
+        ((target.tagName === "INPUT" &&
+          !["checkbox", "range", "button", "radio"].includes((target as HTMLInputElement).type)) ||
           target.tagName === "TEXTAREA" ||
           target.tagName === "SELECT" ||
-          target.isContentEditable)
-      ) {
+          target.isContentEditable);
+      if (isTextInput) {
         return;
       }
       const key = event.key.toLowerCase();

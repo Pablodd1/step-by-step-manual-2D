@@ -1125,6 +1125,11 @@ export class WallpaperScene implements LessonRenderer {
   private hideTools() {
     // Reset the full pose, not just visibility: an operation that only set rotation.z used to inherit
     // rotation.x/y and scale from whichever operation was seeked before it (history-dependent frames).
+    // Also reset group offsets before touch() / anchorTip() solve world-space contact against WALL_FRONT_Z / PAPER_Z.
+    this.dropsGroup.position.set(0, 0, 0);
+    this.toolsGroup.position.set(0, 0, 0);
+    this.dropsGroup.updateMatrixWorld(true);
+    this.toolsGroup.updateMatrixWorld(true);
     for (const tool of this.toolList) {
       tool.visible = false;
       tool.position.set(0, 0, 0);
@@ -1569,6 +1574,9 @@ export class WallpaperScene implements LessonRenderer {
       }
     }
     this.outletFlapsGroup.position.set(OUTLET.x - e * 0.24, OUTLET.y, PAPER_Z + 0.0006 + e * 0.45);
+    this.dropsGroup.updateMatrixWorld(true);
+    this.toolsGroup.updateMatrixWorld(true);
+    this.outletFlapsGroup.updateMatrixWorld(true);
   }
 
   private buildCallouts() {
