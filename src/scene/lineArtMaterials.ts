@@ -27,6 +27,8 @@ export type Pt2 = { x: number; y: number };
 interface CadMeshMeta {
   pbrMat: THREE.Material | THREE.Material[];
   celMat: THREE.ShaderMaterial;
+  /** Per-group authored line weight; applyGroupViewMode scales it instead of overwriting it. */
+  baseWidth: number;
   edgeLines?: LineSegments2;
   lineMat?: LineMaterial;
   hullMesh?: THREE.Mesh;
@@ -80,6 +82,8 @@ export function createFaceMaterial(
       uTintAmt: { value: tintAmt },
       uOpacity: { value: opacity },
       uLightDir: { value: new THREE.Vector3(0.48, 0.78, 0.42).normalize() },
+      // 0 = flat paper-white faces (context architecture), 1 = full 4-band cel steps (hero parts)
+      uBands: { value: 1.0 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vNormal;
@@ -94,10 +98,12 @@ export function createFaceMaterial(
       uniform float uTintAmt;
       uniform float uOpacity;
       uniform vec3 uLightDir;
+      uniform float uBands;
       varying vec3 vNormal;
       void main() {
         float d = dot(normalize(vNormal), uLightDir) * 0.5 + 0.5;
         float band = d > 0.76 ? 1.0 : (d > 0.50 ? 0.955 : (d > 0.28 ? 0.90 : 0.845));
+        band = mix(1.0, band, uBands);
         vec3 col = mix(uBase * band, uTint * band, uTintAmt);
         gl_FragColor = vec4(col, uOpacity);
       }
@@ -128,7 +134,11 @@ export function createHullMaterial(width = 1.85, color = CAD_INK, opacity = 1.0)
       void main() {
         vec4 clip = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         vec3 n = normalize(normalMatrix * hullDir);
-        vec2 dir = normalize(n.xy + vec2(1e-5));
+        // Faces pointing straight at/away from the camera have n.xy ~ 0. normalize(n.xy + eps) used to push
+        // them diagonally (+x,+y), which drew a one-sided "drop shadow" ink edge on tools held parallel to
+        // the wall. Only extrude where the normal actually has a screen-space direction.
+        float nl = length(n.xy);
+        vec2 dir = nl > 1e-3 ? n.xy / nl : vec2(0.0);
         clip.xy += dir * uWidth * 2.0 / uRes * clip.w;
         clip.z += 0.00025 * clip.w;
         gl_Position = clip;
@@ -269,6 +279,13 @@ export function upgradeGroupToLineArt(root: THREE.Object3D, opts: LineArtUpgrade
 
     const isPlane = geo.type === "PlaneGeometry";
     const isCyl = geo.type === "CylinderGeometry";
+    // Faceted curved primitives (capsule fingers, cylinders, spheres, rounded-box bevels) have 20–36° between
+    // neighbouring facets, so a 22–24° crease threshold inks every facet and produces hatched "spaghetti"
+    // on gloves and handles. Curved bodies get their outline from the silhouette hull; only real creases
+    // (cylinder caps, box corners) should survive here.
+    const isCurved = isCyl || geo.type === "CapsuleGeometry" || geo.type === "SphereGeometry" || geo.type === "ConeGeometry";
+    const isRoundedBox = geo.type === "RoundedBoxGeometry" || (geo.type === "BoxGeometry" && (geo.getAttribute("position")?.count ?? 0) > 24);
+    const creaseAngle = isCurved ? Math.max(threshold, 70) : isRoundedBox ? Math.max(threshold, 50) : threshold;
 
     let baseHex = opts.celBaseHex ?? 0xfaf9f5;
     const origMat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
@@ -282,10 +299,11 @@ export function upgradeGroupToLineArt(root: THREE.Object3D, opts: LineArtUpgrade
     const meta: CadMeshMeta = {
       pbrMat: mesh.material,
       celMat,
+      baseWidth: drawingLineWidth,
     };
 
     // 1. Fat screen-space crease edges via LineSegments2
-    const edgesGeo = new THREE.EdgesGeometry(geo, threshold);
+    const edgesGeo = new THREE.EdgesGeometry(geo, creaseAngle);
     const posAttr = edgesGeo.getAttribute("position");
     if (posAttr && posAttr.count >= 2) {
       const lsGeo = new LineSegmentsGeometry();
@@ -332,9 +350,13 @@ export function applyGroupViewMode(root: THREE.Object3D, state: GroupStyleState)
   const isDrawing = state.viewMode === "drawing";
   const emphasis = state.emphasis ?? "active";
   const inkColor = emphasis === "context" ? CAD_INK_OLD : CAD_INK;
-  const lineWidth = isDrawing ? (emphasis === "active" ? 2.15 : 1.35) : emphasis === "active" ? 0.95 : 0.55;
-  const lineOpacity = isDrawing ? (emphasis === "context" ? 0.68 : 0.98) : emphasis === "active" ? 0.32 : 0.14;
-  const tintAmt = emphasis === "active" ? 0.24 : emphasis === "accent" ? 0.42 : 0.0;
+  // Technical-illustration hierarchy: the part/tool being worked is the heaviest line, the paper being hung is
+  // medium, and the room is a thin grey context line. (Previously "accent" tools fell through to the thin
+  // context weight, so the hero tool was drawn lighter than the wallpaper.)
+  const weight = emphasis === "accent" ? 1.25 : emphasis === "active" ? 1.0 : 0.6;
+  const lineOpacity = isDrawing ? (emphasis === "context" ? 0.75 : 1.0) : emphasis === "context" ? 0 : 0.16;
+  const tintAmt = emphasis === "active" ? 0.12 : emphasis === "accent" ? 0.3 : 0.0;
+  const bands = emphasis === "context" ? 0.0 : emphasis === "active" ? 0.5 : 1.0;
 
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
@@ -344,23 +366,26 @@ export function applyGroupViewMode(root: THREE.Object3D, state: GroupStyleState)
 
     if (isDrawing) {
       meta.celMat.uniforms.uTintAmt.value = tintAmt;
+      meta.celMat.uniforms.uBands.value = bands;
       mesh.material = meta.celMat;
     } else {
       mesh.material = meta.pbrMat;
     }
 
-    if (meta.lineMat) {
+    if (meta.lineMat && meta.edgeLines) {
       meta.lineMat.color.setHex(inkColor);
-      meta.lineMat.linewidth = lineWidth;
+      meta.lineMat.linewidth = isDrawing ? meta.baseWidth * weight : 0.8;
       meta.lineMat.opacity = lineOpacity;
       meta.lineMat.transparent = lineOpacity < 1;
+      // Room view is a photographic view: no wireframe-like context edges on the plaster and trim.
+      meta.edgeLines.visible = lineOpacity > 0;
     }
 
     if (meta.hullMesh && meta.hullMat) {
       meta.hullMesh.visible = isDrawing;
       meta.hullMat.uniforms.uColor.value.setHex(inkColor);
-      meta.hullMat.uniforms.uWidth.value = emphasis === "active" ? 1.95 : 1.25;
-      meta.hullMat.uniforms.uOpacity.value = emphasis === "context" ? 0.65 : 0.98;
+      meta.hullMat.uniforms.uWidth.value = meta.baseWidth * weight * 1.15;
+      meta.hullMat.uniforms.uOpacity.value = emphasis === "context" ? 0.75 : 1.0;
     }
   });
 }
