@@ -44,6 +44,11 @@ export type ManualToolIconKind =
  */
 export function resolveManualToolKind(labelOrId: string): ManualToolIconKind {
   const s = labelOrId.toLowerCase();
+  // Multi-word labels used by the wallpaper guide ("Straight edge…", "Roller and tray", "Seam roller…")
+  // previously fell through to the paper-roll icon.
+  if (s.includes("seam")) return "seamRoller";
+  if (s.includes("straight edge")) return "straightedge";
+  if (s.includes("roller")) return "pasteRoller";
   if (s.includes("voltage") || s.includes("ncvt") || s.includes("breaker") || s.includes("tester")) return "voltageTester";
   if (s.includes("screw") || s.includes("plate")) return "screwdriver";
   if (s.includes("putty") || s.includes("filler") || s.includes("spackle") || s.includes("broadknife")) return "fillerKnife";
