@@ -2,6 +2,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import type { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
+import type { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import {
   applyGroupViewMode,
   arcArrow,
@@ -23,18 +25,72 @@ import {
   createWallPbrMaps,
   createWetPasteMaterial,
 } from "./pbrMaterials";
+import {
+  CORNICE_BOTTOM,
+  CORNICE_H,
+  DROP_H,
+  DROP_W,
+  FIRST_X,
+  OUTLET as OUTLET_SPEC,
+  PAPER_Z,
+  PASTE_Z,
+  PLUMB_X,
+  SKIRTING_TOP,
+  WALL_FRONT_Z,
+  WALL_H,
+  WALL_LEFT as LEFT,
+  WALL_W,
+  corniceDepth,
+  skirtingDepth,
+} from "./geometry";
 
-const WALL_W = 3.18;
-const WALL_H = 2.7;
-const DROP_W = 0.53;
-const DROP_H = 2.64;
-const LEFT = -WALL_W / 2;
-const FIRST_X = LEFT + 0.5 - DROP_W / 2;
-const OUTLET = new THREE.Vector3(FIRST_X + DROP_W + 0.08, 1.12, 0.055);
+/** Faceplate centre: the plate sits on the paper (back face 1 mm proud), not 5 cm in front of the wall. */
+const OUTLET = new THREE.Vector3(OUTLET_SPEC.x, OUTLET_SPEC.y, PAPER_Z + 0.001 + OUTLET_SPEC.d / 2);
+const OUTLET_FRONT_Z = OUTLET.z + OUTLET_SPEC.d / 2;
+/** On-screen magnification the loupe is labelled with; detail-camera distance is solved to make it true. */
+export const LOUPE_MAG = 3.5;
+const DROP_SEGMENTS_X = 24;
+const DROP_SEGMENTS_Y = 96;
 
 interface DropMesh extends THREE.Mesh<THREE.PlaneGeometry, THREE.MeshPhysicalMaterial> {
-  userData: { original: Float32Array };
+  userData: { original: Float32Array; baseX: number };
 }
+
+export interface DropState {
+  reveal: number;
+  visible: boolean;
+  /** Lateral slide (m) while the dry drop is being brought to the plumb line / pattern. */
+  xOffset?: number;
+  /** Vertical slide (m) used when matching the pattern on the next drop. */
+  yOffset?: number;
+  /** 0..1: fraction of the cornice allowance already cut away, from the left edge. */
+  trimTop?: number;
+  /** 0..1: fraction of the skirting allowance already cut away, from the left edge. */
+  trimBottom?: number;
+}
+
+/** A labelled, world-anchored callout (⇧N). `anchor` is evaluated after seek() so it tracks moving parts. */
+export interface Callout {
+  id: string;
+  label: string;
+  anchor: THREE.Vector3;
+  /** Preferred screen direction for the label, in px (x right, y down). */
+  dir: [number, number];
+}
+
+/** Ids of the hand tools, used by the UI inventory bar to highlight what is in use. */
+export type ToolId =
+  | "level"
+  | "roller"
+  | "smoother"
+  | "knife"
+  | "straightedge"
+  | "fillingKnife"
+  | "pasteBrush"
+  | "sponge"
+  | "pencil"
+  | "tape"
+  | "voltageTester";
 
 function meshBox(
   size: [number, number, number],
@@ -56,6 +112,7 @@ function makeCraftsmanHand(
   accentColor = "#eab308",
 ): THREE.Group {
   const hand = new THREE.Group();
+  hand.name = "glove";
   const dir = isLeft ? -1 : 1;
 
   const fabricMat = new THREE.MeshPhysicalMaterial({
@@ -111,9 +168,10 @@ function makeCraftsmanHand(
   );
   trim.scale.set(1.08, 1, 0.82);
   trim.position.set(0, -0.056, 0.002);
-  const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.029, 0.036, 0.13, 18), sleeveMat);
+  // Short sleeve stub: a 13 cm sleeve on a 35°-tipped knife pointed straight at the camera and hid the cut.
+  const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.029, 0.033, 0.07, 18), sleeveMat);
   forearm.scale.set(1.06, 1, 0.86);
-  forearm.position.set(0.006 * dir, -0.125, 0.018);
+  forearm.position.set(0.006 * dir, -0.094, 0.012);
   forearm.rotation.set(0.22, 0, -0.08 * dir);
   hand.add(cuff, trim, forearm);
 
@@ -418,8 +476,10 @@ function makeProductLabel(): THREE.Mesh {
 
 function makeTape(): THREE.Group {
   const group = new THREE.Group();
-  const strip = meshBox([0.022, 2.48, 0.006], "#facc15", 0.45);
-  strip.position.y = 1.24;
+  // Unit-height blade scaled on its own: scaling the whole group used to squash the tape case to 15 %.
+  const strip = meshBox([0.022, 1, 0.006], "#facc15", 0.45);
+  strip.name = "tapeBlade";
+  strip.position.y = 0.5;
   const caseBody = meshBox([0.095, 0.085, 0.052], "#1e3a34", 0.38, 0.15, true);
   caseBody.position.set(0, 0.03, 0.022);
   const badge = meshBox([0.055, 0.05, 0.056], "#eab308", 0.35, 0.1, true);
@@ -463,6 +523,15 @@ export class WallpaperScene implements LessonRenderer {
   private readonly pencil = makePencil();
   private readonly tape = makeTape();
   private readonly voltageTester = makeVoltageTester();
+  /** Two free gloves that carry the dry drop during the hang (dry-drop alignment is a two-handed job). */
+  private readonly hangHands = new THREE.Group();
+  private readonly hangLeft = makeCraftsmanHand(true);
+  private readonly hangRight = makeCraftsmanHand(false);
+  /** Proud filler patch that the filling knife works flush during "prepare". */
+  private readonly fillerPatch: THREE.Mesh;
+  /** Grazing light for the final raking-light inspection. */
+  private readonly rakeLight = new THREE.DirectionalLight("#fff1d6", 0);
+  private readonly keyLight: THREE.DirectionalLight;
   private readonly displayRoll: THREE.Mesh;
   private readonly productLabel = makeProductLabel();
   private readonly outletCuts: THREE.LineSegments;
@@ -486,6 +555,20 @@ export class WallpaperScene implements LessonRenderer {
     target: THREE.Vector3;
   } | null = null;
   private environmentTarget: THREE.WebGLRenderTarget | null = null;
+  /** ⇧X: 0 = assembled, 1 = substrate / adhesive bed / wallcovering pulled apart along the wall normal. */
+  private exploded = 0;
+  /** ⇧N: world-anchored part and junction labels. */
+  private showCallouts = false;
+  private callouts: Callout[] = [];
+  /** Interactive camera follows the work point until the user orbits; R / step change re-engages it. */
+  private followCamera = true;
+  private readonly shotTarget = new THREE.Vector3(0, 1.3, 0);
+  private readonly shotPosition = new THREE.Vector3(3.45, 2.35, 4.95);
+  private lastFrameTime = 0;
+  /** Height in overlay px that the main camera's vertical FOV spans (smaller than the frame under a caption bar). */
+  private mainViewPx: number | null = null;
+  /** Dark electrical-box opening revealed behind the folded relief flaps. */
+  private readonly outletOpening: THREE.Mesh;
 
   constructor(host: HTMLElement) {
     this.host = host;
@@ -539,10 +622,15 @@ export class WallpaperScene implements LessonRenderer {
     this.controls.maxDistance = 9;
     this.controls.maxPolarAngle = Math.PI * 0.52;
     this.controls.target.set(0, 1.3, 0);
+    // A user orbit/zoom hands the camera to the user until R (reset) or the next step re-engages the shot.
+    this.controls.addEventListener("start", () => {
+      this.followCamera = false;
+    });
 
     const hemi = new THREE.HemisphereLight("#dbe8ef", "#26352e", 1.55);
     this.scene.add(hemi);
     const key = new THREE.DirectionalLight("#fff4df", 3.35);
+    this.keyLight = key;
     key.position.set(-2.8, 4.8, 4.8);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -556,6 +644,10 @@ export class WallpaperScene implements LessonRenderer {
     const rim = new THREE.DirectionalLight("#8ec9c0", 1.25);
     rim.position.set(4, 2.2, 1.4);
     this.scene.add(rim);
+    // Raking light: almost parallel to the wall so seams, bubbles and edge lift throw visible relief.
+    this.rakeLight.position.set(-4.2, 1.45, 0.32);
+    this.rakeLight.target.position.set(0, 1.3, WALL_FRONT_Z);
+    this.scene.add(this.rakeLight, this.rakeLight.target);
 
     // Physically based architectural wall (gypsum plaster albedo + normal + roughness + baked AO)
     const wallMaps = createWallPbrMaps();
@@ -588,11 +680,12 @@ export class WallpaperScene implements LessonRenderer {
       clearcoatRoughness: 0.28,
     });
     const skirting = createProfiledSkirting(WALL_W + 0.08, trimMat);
-    skirting.position.set(0, 0, -0.005);
+    skirting.position.set(0, 0, WALL_FRONT_Z);
     this.architectureGroup.add(skirting);
 
     const cornice = createProfiledCornice(WALL_W + 0.15, trimMat);
-    cornice.position.set(0, WALL_H, -0.005);
+    // The cornice hangs from the ceiling line; it used to sit on top of the wall (y 2.70–2.775), out of sight.
+    cornice.position.set(0, WALL_H - CORNICE_H, WALL_FRONT_Z);
     this.architectureGroup.add(cornice);
     this.scene.add(this.architectureGroup);
 
@@ -634,10 +727,11 @@ export class WallpaperScene implements LessonRenderer {
         sheenColor: new THREE.Color("#f7f4eb"),
         side: THREE.DoubleSide,
       });
-      const geometry = new THREE.PlaneGeometry(DROP_W, DROP_H, 12, 48);
+      const geometry = new THREE.PlaneGeometry(DROP_W, DROP_H, DROP_SEGMENTS_X, DROP_SEGMENTS_Y);
       const drop = new THREE.Mesh(geometry, material) as DropMesh;
-      drop.userData = { original: new Float32Array(geometry.attributes.position.array) };
-      drop.position.set(FIRST_X + i * DROP_W, WALL_H / 2, 0.018 + i * 0.0002);
+      drop.userData = { original: new Float32Array(geometry.attributes.position.array), baseX: FIRST_X + i * DROP_W };
+      // Paper lies 3 mm off the plaster (on its adhesive bed); it used to float 23 mm in front of the wall.
+      drop.position.set(FIRST_X + i * DROP_W, WALL_H / 2, PAPER_Z + i * 0.0002);
       drop.castShadow = true;
       drop.receiveShadow = true;
       this.drops.push(drop);
@@ -646,7 +740,7 @@ export class WallpaperScene implements LessonRenderer {
       const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.043, 0.043, DROP_W, 36, 1, false), material);
       roll.rotation.z = Math.PI / 2;
       roll.position.x = drop.position.x;
-      roll.position.z = 0.065;
+      roll.position.z = PAPER_Z + 0.044;
       roll.castShadow = true;
       const coreTube = new THREE.Mesh(
         new THREE.CylinderGeometry(0.02, 0.02, DROP_W + 0.003, 24, 1, false),
@@ -667,15 +761,15 @@ export class WallpaperScene implements LessonRenderer {
           wetPasteMat,
         );
         markCadAuxiliary(lane);
-        lane.position.set(drop.position.x, WALL_H / 2, 0.009);
+        lane.position.set(drop.position.x, WALL_H / 2, PASTE_Z);
         this.paste.push(lane);
         this.scene.add(lane);
         const points = [
-          new THREE.Vector3(drop.position.x - DROP_W / 2, 0.03, 0.027),
-          new THREE.Vector3(drop.position.x + DROP_W / 2, 0.03, 0.027),
-          new THREE.Vector3(drop.position.x + DROP_W / 2, 2.67, 0.027),
-          new THREE.Vector3(drop.position.x - DROP_W / 2, 2.67, 0.027),
-          new THREE.Vector3(drop.position.x - DROP_W / 2, 0.03, 0.027),
+          new THREE.Vector3(drop.position.x - DROP_W / 2, 0.03, WALL_FRONT_Z + 0.002),
+          new THREE.Vector3(drop.position.x + DROP_W / 2, 0.03, WALL_FRONT_Z + 0.002),
+          new THREE.Vector3(drop.position.x + DROP_W / 2, 2.67, WALL_FRONT_Z + 0.002),
+          new THREE.Vector3(drop.position.x - DROP_W / 2, 2.67, WALL_FRONT_Z + 0.002),
+          new THREE.Vector3(drop.position.x - DROP_W / 2, 0.03, WALL_FRONT_Z + 0.002),
         ];
         const line = new THREE.Line(
           new THREE.BufferGeometry().setFromPoints(points),
@@ -689,15 +783,13 @@ export class WallpaperScene implements LessonRenderer {
     this.scene.add(this.ghostLines);
 
     // Trim overhang strip that visibly separates during Step 10 (trim)
-    this.overhangStrip = new THREE.Mesh(
-      new THREE.PlaneGeometry(DROP_W, 0.055, 8, 2),
-      this.drops[0].material,
-    );
+    // Unit plane, scaled to the strip that has actually been cut off (see seek "trim").
+    this.overhangStrip = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 4, 2), this.drops[0].material);
     this.overhangStrip.visible = false;
     this.dropsGroup.add(this.overhangStrip);
 
     // 4 Folding Triangular Flaps around the outlet for Step 12 (outlet X-cut)
-    this.outletFlapsGroup.position.set(OUTLET.x, OUTLET.y, 0.032);
+    this.outletFlapsGroup.position.set(OUTLET.x, OUTLET.y, PAPER_Z + 0.0006);
     const flapConfigs: Array<{ pos: [number, number]; rotAxis: [number, number, number]; verts: number[] }> = [
       { pos: [0, 0.052], rotAxis: [1, 0, 0], verts: [-0.078, 0, 0, 0.078, 0, 0, 0, -0.052, 0] },
       { pos: [0, -0.052], rotAxis: [-1, 0, 0], verts: [0.078, 0, 0, -0.078, 0, 0, 0, 0.052, 0] },
@@ -721,10 +813,19 @@ export class WallpaperScene implements LessonRenderer {
     }
     this.outletFlapsGroup.visible = false;
     this.scene.add(this.outletFlapsGroup);
+    this.outletOpening = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.15, 0.1),
+      new THREE.MeshStandardMaterial({ color: "#1b1f24", roughness: 0.9 }),
+    );
+    markCadAuxiliary(this.outletOpening);
+    this.outletOpening.position.set(OUTLET.x, OUTLET.y, PAPER_Z + 0.0003);
+    this.outletOpening.visible = false;
+    this.scene.add(this.outletOpening);
 
-    this.plumbLine = meshBox([0.007, 2.58, 0.005], "#0891b2", 0.35);
+    // Pencil line on the plaster, under the paper: the drop's dry edge is brought onto it.
+    this.plumbLine = meshBox([0.007, 1, 0.001], "#0891b2", 0.35);
     markCadAuxiliary(this.plumbLine);
-    this.plumbLine.position.set(LEFT + 0.5, 1.36, 0.035);
+    this.plumbLine.position.set(PLUMB_X, 1.36, WALL_FRONT_Z + 0.0015);
     this.scene.add(this.plumbLine);
 
     this.outlet = new THREE.Group();
@@ -779,7 +880,7 @@ export class WallpaperScene implements LessonRenderer {
       new THREE.MeshBasicMaterial({ color: "#f59e0b", transparent: true, opacity: 0.92, side: THREE.DoubleSide }),
     );
     markCadAuxiliary(this.outletRing);
-    this.outletRing.position.set(OUTLET.x, OUTLET.y, 0.085);
+    this.outletRing.position.set(OUTLET.x, OUTLET.y, OUTLET_FRONT_Z + 0.004);
     this.scene.add(this.outletRing);
 
     this.displayRoll = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, DROP_W, 48), this.drops[0].material);
@@ -802,10 +903,8 @@ export class WallpaperScene implements LessonRenderer {
     this.productLabel.rotation.x = -0.14;
     this.toolsGroup.add(this.productLabel);
 
-    const cutPoints = [
-      OUTLET.x - 0.075, OUTLET.y + 0.052, 0.09, OUTLET.x + 0.075, OUTLET.y - 0.052, 0.09,
-      OUTLET.x + 0.075, OUTLET.y + 0.052, 0.09, OUTLET.x - 0.075, OUTLET.y - 0.052, 0.09,
-    ];
+    // Positions are rewritten every seek so each relief cut grows with the blade.
+    const cutPoints = new Array(12).fill(0);
     this.outletCuts = new THREE.LineSegments(
       new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(cutPoints, 3)),
       new THREE.LineBasicMaterial({ color: "#b91c1c", linewidth: 2 }),
@@ -813,6 +912,14 @@ export class WallpaperScene implements LessonRenderer {
     markCadAuxiliary(this.outletCuts);
     this.scene.add(this.outletCuts);
 
+    this.fillerPatch = new THREE.Mesh(
+      new THREE.CircleGeometry(0.045, 40),
+      new THREE.MeshStandardMaterial({ color: "#f3efe4", roughness: 0.9 }),
+    );
+    this.fillerPatch.position.set(-0.25, 1.22, WALL_FRONT_Z + 0.002);
+    this.architectureGroup.add(this.fillerPatch);
+
+    this.hangHands.add(this.hangLeft, this.hangRight);
     for (const tool of [
       this.level,
       this.roller,
@@ -825,6 +932,7 @@ export class WallpaperScene implements LessonRenderer {
       this.pencil,
       this.tape,
       this.voltageTester,
+      this.hangHands,
     ]) {
       tool.traverse((child) => {
         if (child instanceof THREE.Mesh) child.castShadow = true;
@@ -893,18 +1001,60 @@ export class WallpaperScene implements LessonRenderer {
       viewMode: this.view,
       emphasis: "accent",
     });
-    for (const { mesh, material } of this.paperMeshes) mesh.material = material;
+    // Drawing view prints the paper pattern flat (unlit, untone-mapped) like ink on a manual page instead of
+    // a lit PBR sheet sitting inside an otherwise cel-shaded illustration.
+    for (const { mesh, material } of this.paperMeshes) {
+      mesh.material = this.view === "drawing" ? this.flatPaper(material) : material;
+    }
   }
 
-  private setDrop(index: number, reveal: number, visible: boolean) {
+  private readonly flatPaperCache = new WeakMap<THREE.Material, THREE.MeshBasicMaterial>();
+  private flatPaper(material: THREE.Material): THREE.MeshBasicMaterial {
+    let flat = this.flatPaperCache.get(material);
+    if (!flat) {
+      flat = new THREE.MeshBasicMaterial({
+        map: (material as THREE.MeshStandardMaterial).map ?? null,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+      this.flatPaperCache.set(material, flat);
+    }
+    return flat;
+  }
+
+  private setDrop(index: number, state: DropState) {
+    // Deterministic: every call rebuilds the drop from its pristine vertex buffer, so scrubbing never drifts.
     const drop = this.drops[index];
-    const p = THREE.MathUtils.clamp(reveal, 0, 1);
-    drop.visible = visible && p > 0.001;
+    const p = THREE.MathUtils.clamp(state.reveal, 0, 1);
+    const trimTop = THREE.MathUtils.clamp(state.trimTop ?? 0, 0, 1);
+    const trimBottom = THREE.MathUtils.clamp(state.trimBottom ?? 0, 0, 1);
+    drop.visible = state.visible && p > 0.001;
+    drop.position.x = drop.userData.baseX + (state.xOffset ?? 0);
+    drop.position.y = WALL_H / 2 + (state.yOffset ?? 0);
+    const roll = this.rolls[index];
+    roll.visible = drop.visible && p < 0.995;
+    if (!drop.visible) return;
+
     const position = drop.geometry.attributes.position;
     const original = drop.userData.original;
-    const threshold = DROP_H / 2 - p * DROP_H;
+    const threshold = DROP_H / 2 - p * DROP_H; // local y of the unrolled edge (the roll sits here)
+    const baseY = drop.position.y;
+    const baseZ = drop.position.z;
     for (let i = 0; i < position.count; i++) {
-      position.setY(i, Math.max(original[i * 3 + 1], threshold));
+      const x = original[i * 3];
+      const u = (x + DROP_W / 2) / DROP_W; // 0 = left edge, 1 = right edge
+      let worldY = baseY + Math.max(original[i * 3 + 1], threshold);
+      // Allowance already cut away collapses onto the junction line.
+      if (trimTop > 0 && u <= trimTop + 1e-6 && worldY > CORNICE_BOTTOM) worldY = CORNICE_BOTTOM;
+      if (trimBottom > 0 && u <= trimBottom + 1e-6 && worldY < SKIRTING_TOP) worldY = SKIRTING_TOP;
+      // Uncut allowance drapes over the cornice cove / skirting ogee instead of passing through them.
+      let z = 0;
+      if (worldY > CORNICE_BOTTOM) z = WALL_FRONT_Z + corniceDepth(worldY - CORNICE_BOTTOM) + 0.0015 - baseZ;
+      else if (worldY < SKIRTING_TOP) z = WALL_FRONT_Z + skirtingDepth(worldY) + 0.0015 - baseZ;
+      position.setXYZ(i, x, worldY - baseY, Math.max(0, z));
     }
     position.needsUpdate = true;
     drop.geometry.computeVertexNormals();
@@ -912,13 +1062,51 @@ export class WallpaperScene implements LessonRenderer {
     // (collapsed) bounding sphere, which made hung paper vanish in low/close camera shots.
     drop.geometry.computeBoundingSphere();
     drop.geometry.computeBoundingBox();
-    const roll = this.rolls[index];
-    roll.visible = visible && p > 0.001 && p < 0.995;
-    roll.position.y = WALL_H / 2 + threshold;
+    this.refreshOutline(drop);
+    roll.position.set(drop.position.x, baseY + threshold, PAPER_Z + 0.044);
   }
 
-  private hideTools() {
-    for (const tool of [
+  /**
+   * Drawing view: rebuild the drop's ink outline from its live boundary. The EdgesGeometry was computed once
+   * from the full-height plane, so a half-unrolled drop used to be drawn as a full-height ink rectangle.
+   * The interleaved buffer is updated in place (no per-seek GPU buffer allocation during a 9,000-frame export).
+   */
+  private refreshOutline(drop: DropMesh) {
+    const lines = drop.children.find((c) => (c as LineSegments2).isLineSegments2) as LineSegments2 | undefined;
+    if (!lines) return;
+    const pos = drop.geometry.attributes.position;
+    const cols = DROP_SEGMENTS_X + 1;
+    const rows = DROP_SEGMENTS_Y + 1;
+    const ring: number[] = [];
+    for (let c = 0; c < cols; c++) ring.push(c); // top row (PlaneGeometry row 0 is the top)
+    for (let r = 1; r < rows; r++) ring.push(r * cols + cols - 1); // right edge
+    for (let c = cols - 2; c >= 0; c--) ring.push((rows - 1) * cols + c); // bottom row
+    for (let r = rows - 2; r > 0; r--) ring.push(r * cols); // left edge
+    const out = new Float32Array(ring.length * 6);
+    for (let k = 0; k < ring.length; k++) {
+      const a = ring[k];
+      const b = ring[(k + 1) % ring.length];
+      out[k * 6] = pos.getX(a);
+      out[k * 6 + 1] = pos.getY(a);
+      out[k * 6 + 2] = pos.getZ(a);
+      out[k * 6 + 3] = pos.getX(b);
+      out[k * 6 + 4] = pos.getY(b);
+      out[k * 6 + 5] = pos.getZ(b);
+    }
+    const geo = lines.geometry as LineSegmentsGeometry;
+    const start = geo.getAttribute("instanceStart") as THREE.InterleavedBufferAttribute | undefined;
+    if (start && start.data.array.length === out.length) {
+      (start.data.array as Float32Array).set(out);
+      start.data.needsUpdate = true;
+      geo.computeBoundingBox();
+      geo.computeBoundingSphere();
+    } else {
+      geo.setPositions(out);
+    }
+  }
+
+  private get toolList(): THREE.Object3D[] {
+    return [
       this.level,
       this.roller,
       this.smoother,
@@ -930,17 +1118,121 @@ export class WallpaperScene implements LessonRenderer {
       this.pencil,
       this.tape,
       this.voltageTester,
-    ]) {
+      this.hangHands,
+    ];
+  }
+
+  private hideTools() {
+    // Reset the full pose, not just visibility: an operation that only set rotation.z used to inherit
+    // rotation.x/y and scale from whichever operation was seeked before it (history-dependent frames).
+    for (const tool of this.toolList) {
       tool.visible = false;
+      tool.position.set(0, 0, 0);
+      tool.rotation.set(0, 0, 0);
+      tool.scale.set(1, 1, 1);
+    }
+    for (const hand of [this.hangLeft, this.hangRight]) {
+      hand.position.set(0, 0, 0);
+      hand.rotation.set(0, 0, 0);
     }
     this.overhangStrip.visible = false;
     this.outletFlapsGroup.visible = false;
+    this.outletOpening.visible = false;
+    this.fillerPatch.visible = false;
   }
 
-  setShowLoupe(show: boolean) {
-    this.showLoupe = show;
-    this.insetCanvas.style.display = show ? "block" : "none";
-    this.detailTagEl.style.display = show ? "block" : "none";
+  /** Moves `tool` along the wall normal until its working face (glove excluded) rests on the plane z = surfaceZ. */
+  private touch(tool: THREE.Object3D, surfaceZ: number) {
+    tool.updateMatrixWorld(true);
+    const v = new THREE.Vector3();
+    let minZ = Infinity;
+    tool.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh || (mesh.parent as THREE.Mesh | null)?.isMesh) return; // skip ink hulls / edge lines
+      for (let p: THREE.Object3D | null = mesh; p && p !== tool; p = p.parent) if (p.name === "glove") return;
+      const attr = mesh.geometry.getAttribute("position");
+      for (let i = 0; i < attr.count; i++) {
+        v.fromBufferAttribute(attr, i).applyMatrix4(mesh.matrixWorld);
+        if (v.z < minZ) minZ = v.z;
+      }
+    });
+    if (Number.isFinite(minZ)) tool.position.z += surfaceZ - minZ;
+  }
+
+  /** Translates `tool` so the local point `tipLocal` (e.g. a blade or probe tip) lands exactly on `target`. */
+  private anchorTip(tool: THREE.Object3D, tipLocal: THREE.Vector3, target: THREE.Vector3) {
+    tool.updateMatrixWorld(true);
+    const tip = tool.localToWorld(tipLocal.clone());
+    tool.position.add(target.clone().sub(tip));
+    tool.updateMatrixWorld(true);
+  }
+
+  /**
+   * Blade pose: travelling along `travel` (wall plane), blade tipped `angle` rad into the wall with the tip
+   * trailing the hand, and the blade plane perpendicular to the wall along the cut line.
+   */
+  private bladeQuaternion(travel: THREE.Vector3, angle: number): THREE.Quaternion {
+    const t = travel.clone().normalize();
+    const n = new THREE.Vector3(0, 0, 1);
+    const yAxis = t.clone().multiplyScalar(-Math.cos(angle)).addScaledVector(n, -Math.sin(angle)).normalize();
+    const zAxis = n.clone().cross(t).normalize();
+    const xAxis = yAxis.clone().cross(zAxis).normalize();
+    return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis));
+  }
+
+  /** W-pattern paste roller pass whose leading edge is the coverage edge (adhesive appears where the roller is). */
+  private rollPaste(lane: THREE.Mesh, centreX: number, coverage: number) {
+    const c = THREE.MathUtils.clamp(coverage, 0, 1);
+    lane.visible = true;
+    lane.scale.y = Math.max(0.001, c);
+    lane.position.y = 2.67 - (DROP_H * c) / 2;
+    const edgeY = 2.67 - DROP_H * c;
+    this.roller.visible = true;
+    this.roller.position.set(centreX + Math.sin(c * Math.PI * 7) * 0.13, Math.max(0.2, edgeY + 0.03), 0);
+    this.roller.rotation.z = Math.cos(c * Math.PI * 7) * 0.1;
+    this.touch(this.roller, PASTE_Z + 0.0005);
+    this.focusWorld.set(this.roller.position.x, Math.max(0.2, edgeY + 0.03), PASTE_Z);
+  }
+
+  /** Two-handed dry hang: hold the top corners while sliding onto the plumb/pattern, then guide the roll down. */
+  private hangDrop(index: number, p: number, slideX: number, slideY: number, trimmed: number) {
+    const holdEnd = 0.3;
+    const slide = 1 - THREE.MathUtils.smoothstep(p, 0, holdEnd);
+    const reveal = p < holdEnd ? 0.2 : 0.2 + ((p - holdEnd) / (1 - holdEnd)) * 0.8;
+    this.setDrop(index, { reveal, visible: true, xOffset: slideX * slide, yOffset: slideY * slide, trimTop: trimmed, trimBottom: trimmed });
+    const drop = this.drops[index];
+    const left = drop.position.x - DROP_W / 2;
+    const right = drop.position.x + DROP_W / 2;
+    this.hangHands.visible = true;
+    if (p < holdEnd) {
+      // Palms flat on the paper at the top corners, fingers up.
+      const y = drop.position.y + DROP_H / 2 - 0.09;
+      this.hangLeft.position.set(left + 0.05, y, PAPER_Z + 0.017);
+      this.hangRight.position.set(right - 0.05, y, PAPER_Z + 0.017);
+      this.focusWorld.set(right, y - 0.05, PAPER_Z);
+    } else {
+      // Fingers wrapped onto the roll ends while it is lowered.
+      const y = this.rolls[index].position.y;
+      this.hangLeft.position.set(left - 0.012, y, PAPER_Z + 0.044);
+      this.hangLeft.rotation.set(0, 0, -Math.PI / 2);
+      this.hangRight.position.set(right + 0.012, y, PAPER_Z + 0.044);
+      this.hangRight.rotation.set(0, 0, Math.PI / 2);
+      this.focusWorld.set(right, y - 0.06, PAPER_Z);
+    }
+  }
+
+  /** Centre-out smoothing: each stroke starts on the drop centre line and travels outward and slightly down. */
+  private smoothStrokes(centreX: number, p: number, topY: number) {
+    const stroke = Math.min(5, Math.floor(p * 6));
+    const local = p * 6 - stroke;
+    const dir = stroke % 2 ? -1 : 1;
+    const y0 = topY - Math.floor(stroke / 2) * 0.62;
+    this.smoother.visible = true;
+    this.smoother.position.set(centreX + dir * local * 0.17, y0 - local * 0.1, 0);
+    this.smoother.rotation.z = dir * -0.45;
+    this.touch(this.smoother, PAPER_Z + 0.0005);
+    this.focusWorld.set(this.smoother.position.x, this.smoother.position.y, PAPER_Z);
+    return dir;
   }
 
   seek(stepIndex: number, progress: number, operation: Operation) {
@@ -949,226 +1241,389 @@ export class WallpaperScene implements LessonRenderer {
     this.currentOperation = operation;
     if (!this.exporting) this.lastSeek = { stepIndex, progress: p, operation };
     const stepChanged = stepIndex !== this.currentStep;
+    const firstSeek = this.currentStep === -1;
     this.currentStep = stepIndex;
     this.hideTools();
     this.displayRoll.visible = operation === "verify";
     this.productLabel.visible = operation === "verify";
-    this.outlet.visible = !(operation === "match" || (operation === "outlet" && p < 0.78));
-    this.outletCuts.visible = operation === "outlet" && p > 0.1;
+    // Faceplate is off from the relief cuts until it is refitted at the end of the outlet step.
+    this.outlet.visible = !(operation === "match" || (operation === "outlet" && p < 0.9));
+    this.outletCuts.visible = operation === "outlet" && p > 0.08;
     this.outletRing.visible = operation === "safety" || operation === "outlet";
     this.outletRing.scale.setScalar(operation === "safety" ? 1 + Math.sin(p * Math.PI * 4) * 0.08 : 1);
     this.ghostLines.visible = operation === "layout";
     this.plumbLine.visible = ["plumb", "measure", "paste", "hang", "smooth"].includes(operation);
+    this.plumbLine.scale.y = 2.58;
+    this.plumbLine.position.y = 2.65 - 2.58 / 2;
+    this.rakeLight.intensity = 0;
+    this.keyLight.intensity = 3.35;
     this.paste.forEach((lane) => {
       lane.visible = false;
       lane.scale.y = 1;
       lane.position.y = WALL_H / 2;
+      lane.position.z = PASTE_Z;
     });
-    this.drops.forEach((_, i) => this.setDrop(i, 0, false));
+    this.drops.forEach((_, i) => this.setDrop(i, { reveal: 0, visible: false }));
 
-    if (["hang", "smooth", "trim", "match", "outlet", "clean", "inspect"].includes(operation)) {
-      this.setDrop(0, 1, true);
-    }
-    if (["outlet", "clean", "inspect"].includes(operation)) this.setDrop(1, 1, true);
-    if (operation === "inspect") for (let i = 2; i < 6; i++) this.setDrop(i, 1, true);
+    // Persistent state from earlier steps (a pure function of the operation, never of seek history).
+    const after = (op: Operation) => {
+      const order: Operation[] = ["verify", "safety", "prepare", "layout", "plumb", "measure", "paste", "hang", "smooth", "trim", "match", "outlet", "clean", "inspect"];
+      return order.indexOf(operation) > order.indexOf(op);
+    };
+    if (after("hang") && operation !== "trim") this.setDrop(0, { reveal: 1, visible: true, trimTop: after("trim") ? 1 : 0, trimBottom: after("trim") ? 1 : 0 });
+    if (after("match")) this.setDrop(1, { reveal: 1, visible: true, trimTop: 1, trimBottom: 1 });
+    if (operation === "inspect") for (let i = 2; i < 6; i++) this.setDrop(i, { reveal: 1, visible: true, trimTop: 1, trimBottom: 1 });
 
+    const tipOfKnife = new THREE.Vector3(0.0035, 0.164, 0);
     switch (operation) {
       case "verify": {
         this.focusWorld.set(-0.72, 0.33, 0.37);
         this.detailCamOffset.set(0.12, 0.08, 0.85);
-        this.detailTagEl.textContent = "3.5× ROLL LABEL & BATCH";
+        this.detailTagEl.textContent = "ROLL LABEL & BATCH";
         break;
       }
       case "safety": {
+        // Probe goes into the socket and is held there while the tester reads, then withdraws.
         this.voltageTester.visible = true;
-        this.voltageTester.position.set(OUTLET.x + 0.04, OUTLET.y - 0.06 + Math.sin(p * Math.PI * 2) * 0.025, 0.11);
-        this.voltageTester.rotation.set(0.35, 0, 0.28);
-        this.focusWorld.set(OUTLET.x, OUTLET.y, 0.05);
+        const d = new THREE.Vector3(-0.3, 0.3, -0.9).normalize();
+        this.voltageTester.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d);
+        const contact = THREE.MathUtils.smoothstep(p, 0.12, 0.3) * (1 - THREE.MathUtils.smoothstep(p, 0.78, 0.94));
+        const slot = new THREE.Vector3(OUTLET.x - 0.05, OUTLET.y + 0.015, OUTLET_FRONT_Z - 0.004);
+        this.anchorTip(this.voltageTester, new THREE.Vector3(0, 0.106, 0), slot.addScaledVector(d, -(1 - contact) * 0.05));
+        this.focusWorld.set(OUTLET.x - 0.05, OUTLET.y + 0.015, OUTLET_FRONT_Z);
         this.detailCamOffset.set(0.14, 0.06, 0.36);
-        this.detailTagEl.textContent = "3.5× VERIFY ISOLATION";
+        this.detailTagEl.textContent = "VERIFY ISOLATION";
         break;
       }
       case "prepare": {
-        const tool = p < 0.48 ? this.fillingKnife : this.sponge;
-        tool.visible = true;
-        tool.position.set(-0.25 + Math.sin(p * 12) * 0.45, 1.55 - p * 1.15, 0.12);
-        tool.rotation.z = p < 0.48 ? -0.65 : Math.sin(p * 15) * 0.25;
-        this.focusWorld.copy(tool.position);
+        this.fillerPatch.visible = true;
+        const knifePhase = THREE.MathUtils.clamp(p / 0.48, 0, 1);
+        // Patch stands 4 mm proud until the filling knife has worked it flush.
+        this.fillerPatch.position.z = WALL_FRONT_Z + 0.002 + (1 - knifePhase) * 0.004;
+        if (p < 0.48) {
+          const tool = this.fillingKnife;
+          tool.visible = true;
+          tool.rotation.set(-0.45, 0, 0.25);
+          const pass = Math.floor(knifePhase * 3);
+          const local = knifePhase * 3 - pass;
+          const sx = pass % 2 ? 1 - local : local;
+          this.anchorTip(tool, new THREE.Vector3(0, 0.113, 0), new THREE.Vector3(-0.36 + sx * 0.22, 1.2 + pass * 0.025, WALL_FRONT_Z + 0.001));
+          this.focusWorld.set(-0.25, 1.22, WALL_FRONT_Z);
+          this.detailTagEl.textContent = "FLUSH COMPOUND FILL";
+        } else {
+          const tool = this.sponge;
+          tool.visible = true;
+          const local = (p - 0.48) / 0.52;
+          tool.position.set(-0.25 + Math.sin(local * Math.PI * 4) * 0.12, 1.42 - local * 0.4, 0);
+          tool.rotation.z = Math.sin(local * 15) * 0.2;
+          this.touch(tool, WALL_FRONT_Z + 0.0005);
+          this.focusWorld.set(tool.position.x, tool.position.y, WALL_FRONT_Z);
+          this.detailTagEl.textContent = "DAMP SPONGE PREP";
+        }
         this.detailCamOffset.set(0.16, 0.08, 0.44);
-        this.detailTagEl.textContent = p < 0.48 ? "3.5× FLUSH COMPOUND FILL" : "3.5× DAMP SPONGE PREP";
         break;
       }
       case "layout": {
+        // Tick the drop boundaries at eye level, one after another, against the dry-lay ghost drops.
         this.pencil.visible = true;
-        this.pencil.position.set(FIRST_X + DROP_W + p * DROP_W, 1.95 - p * 0.9, 0.1);
-        this.pencil.rotation.z = -0.55;
-        this.focusWorld.copy(this.pencil.position);
+        const k = Math.min(3, Math.floor(p * 4));
+        const local = p * 4 - k;
+        const x = FIRST_X + DROP_W / 2 + k * DROP_W;
+        this.pencil.rotation.set(-0.85, 0, -0.35);
+        this.anchorTip(this.pencil, new THREE.Vector3(0, 0.122, 0), new THREE.Vector3(x, 1.62 - local * 0.05, WALL_FRONT_Z + 0.0005));
+        this.focusWorld.set(x, 1.6, WALL_FRONT_Z);
         this.detailCamOffset.set(0.15, 0.08, 0.42);
-        this.detailTagEl.textContent = "3.5× 530 MM DROP SET-OUT";
+        this.detailTagEl.textContent = "530 MM DROP SET-OUT";
         break;
       }
       case "plumb": {
+        // Level held against the wall, pencil drawing down its edge; the line exists only where it is drawn.
         this.level.visible = true;
-        this.level.position.set(LEFT + 0.45, 2.05 - p * 1.35, 0.09);
+        const y = 2.05 - p * 1.35;
+        this.level.position.set(PLUMB_X - 0.042, y, 0);
+        this.touch(this.level, WALL_FRONT_Z);
         this.pencil.visible = true;
-        this.pencil.position.set(LEFT + 0.51, 2.12 - p * 1.35, 0.09);
-        this.pencil.rotation.z = 0.65;
-        this.focusWorld.set(LEFT + 0.5, this.level.position.y, 0.06);
+        this.pencil.rotation.set(-0.85, 0, 0.5);
+        const tipY = y + 0.3;
+        this.anchorTip(this.pencil, new THREE.Vector3(0, 0.122, 0), new THREE.Vector3(PLUMB_X, tipY, WALL_FRONT_Z + 0.0005));
+        const drawn = Math.max(0.01, 2.65 - tipY);
+        this.plumbLine.scale.y = drawn;
+        this.plumbLine.position.y = 2.65 - drawn / 2;
+        this.focusWorld.set(PLUMB_X, y, WALL_FRONT_Z);
         this.detailCamOffset.set(0.16, 0.05, 0.44);
-        this.detailTagEl.textContent = "3.5× SPIRIT LEVEL VIAL & PLUMB";
+        this.detailTagEl.textContent = "SPIRIT LEVEL VIAL & PLUMB";
         break;
       }
       case "measure": {
         this.tape.visible = true;
-        this.tape.position.set(FIRST_X - 0.1, 0.1, 0.08);
-        this.tape.scale.y = 0.15 + p * 0.85;
-        this.focusWorld.set(FIRST_X - 0.1, 0.22 + p * 1.85, 0.08);
+        const blade = this.tape.getObjectByName("tapeBlade");
+        const length = 0.15 + p * (2.67 - SKIRTING_TOP - 0.15);
+        if (blade) {
+          blade.scale.y = length;
+          blade.position.y = length / 2;
+        }
+        this.tape.position.set(FIRST_X - DROP_W / 2 + 0.03, SKIRTING_TOP, 0);
+        this.touch(this.tape, WALL_FRONT_Z);
+        this.focusWorld.set(this.tape.position.x, SKIRTING_TOP + length, WALL_FRONT_Z);
         this.detailCamOffset.set(0.18, 0.06, 0.46);
-        this.detailTagEl.textContent = "3.5× HEIGHT + 2–3 CM TOP ALLOWANCE";
+        this.detailTagEl.textContent = "HEIGHT + 2–3 CM TOP ALLOWANCE";
         break;
       }
       case "paste": {
-        const coverage = Math.min(1, p / 0.72);
-        this.paste[0].visible = true;
-        this.paste[0].scale.y = Math.max(0.001, coverage);
-        this.paste[0].position.y = 2.67 - (DROP_H * coverage) / 2;
         if (p < 0.72) {
-          this.roller.visible = true;
-          const rollerProgress = p / 0.72;
-          const pass = (rollerProgress * 3) % 1;
-          this.roller.position.set(
-            FIRST_X + (Math.floor(rollerProgress * 3) % 2 ? 0.08 : -0.06),
-            0.48 + pass * 1.65,
-            0.13,
-          );
-          this.roller.rotation.z = Math.sin(rollerProgress * 18) * 0.12;
-          this.focusWorld.copy(this.roller.position);
-          this.detailTagEl.textContent = "3.5× PASTE SLIGHTLY WIDER THAN DROP";
+          this.rollPaste(this.paste[0], FIRST_X, p / 0.72);
+          this.detailTagEl.textContent = "PASTE SLIGHTLY WIDER THAN DROP";
         } else {
+          this.paste[0].visible = true;
           this.pasteBrush.visible = true;
           const brushProgress = (p - 0.72) / 0.28;
-          this.pasteBrush.position.set(FIRST_X - DROP_W / 2 + brushProgress * DROP_W, 2.52, 0.12);
+          this.pasteBrush.position.set(FIRST_X - DROP_W / 2 + brushProgress * DROP_W, CORNICE_BOTTOM - 0.04, 0);
           this.pasteBrush.rotation.z = Math.PI / 2;
-          this.focusWorld.copy(this.pasteBrush.position);
-          this.detailTagEl.textContent = "3.5× BRUSH CUT-IN AT CORNICE";
+          this.touch(this.pasteBrush, PASTE_Z);
+          this.focusWorld.set(this.pasteBrush.position.x, CORNICE_BOTTOM - 0.02, PASTE_Z);
+          this.detailTagEl.textContent = "BRUSH CUT-IN AT CORNICE";
         }
         this.detailCamOffset.set(0.22, 0.06, 0.52);
         break;
       }
       case "hang": {
         this.paste[0].visible = true;
-        const rev = Math.max(0.18, p);
-        this.setDrop(0, rev, true);
-        this.focusWorld.set(FIRST_X + DROP_W / 2, WALL_H / 2 + (DROP_H / 2 - rev * DROP_H), 0.06);
+        // Dry drop arrives 3 cm off the plumb line and is slid onto it before it is lowered.
+        this.hangDrop(0, p, 0.03, 0, 0);
         this.detailCamOffset.set(0.2, 0.06, 0.48);
-        this.detailTagEl.textContent = "3.5× PLUMB EDGE ALIGNMENT";
+        this.detailTagEl.textContent = "PLUMB EDGE ALIGNMENT";
         break;
       }
       case "smooth": {
-        this.smoother.visible = true;
-        const stroke = Math.min(3, Math.floor(p * 4));
-        const local = (p * 4) % 1;
-        const direction = stroke % 2 ? -1 : 1;
-        this.smoother.position.set(FIRST_X + direction * (local - 0.5) * 0.36, 2.25 - stroke * 0.48, 0.09);
-        this.smoother.rotation.z = direction * -0.18;
-        this.focusWorld.copy(this.smoother.position);
+        this.setDrop(0, { reveal: 1, visible: true });
+        this.smoothStrokes(FIRST_X, p, 2.3);
         this.detailCamOffset.set(0.18, 0.06, 0.42);
-        this.detailTagEl.textContent = "3.5× CENTER-OUT SMOOTHING";
+        this.detailTagEl.textContent = "CENTRE-OUT SMOOTHING";
         break;
       }
       case "trim": {
-        this.knife.visible = true;
-        this.straightedge.visible = true;
-        this.overhangStrip.visible = true;
         const top = p < 0.5;
-        const local = (p % 0.5) * 2;
-        const yJunction = top ? 2.61 : 0.13;
-        this.straightedge.position.set(FIRST_X, yJunction + (top ? -0.028 : 0.028), 0.055);
-        this.straightedge.rotation.set(0, 0, 0);
+        const local = THREE.MathUtils.clamp(top ? p * 2 : (p - 0.5) * 2, 0, 1);
+        const yJunction = top ? CORNICE_BOTTOM : SKIRTING_TOP;
+        this.setDrop(0, { reveal: 1, visible: true, trimTop: top ? local : 1, trimBottom: top ? 0 : local });
+        const left = FIRST_X - DROP_W / 2;
 
-        this.knife.position.set(FIRST_X - DROP_W / 2 + local * DROP_W, yJunction, 0.11);
-        this.knife.rotation.set(0, 0, Math.PI / 2 - 0.35);
+        this.straightedge.visible = true;
+        this.straightedge.position.set(FIRST_X, yJunction + (top ? -0.029 : 0.029), 0);
+        this.touch(this.straightedge, PAPER_Z + 0.0005);
 
-        this.overhangStrip.position.set(
-          FIRST_X + local * 0.03,
-          yJunction + (top ? 0.03 : -0.03),
-          0.04 + local * 0.04,
-        );
-        this.overhangStrip.rotation.x = (top ? 1 : -1) * local * 0.65;
+        this.knife.visible = true;
+        this.knife.quaternion.copy(this.bladeQuaternion(new THREE.Vector3(1, 0, 0), THREE.MathUtils.degToRad(35)));
+        const tip = new THREE.Vector3(left + local * DROP_W, yJunction, PAPER_Z + 0.0005);
+        this.anchorTip(this.knife, tipOfKnife, tip);
 
-        this.focusWorld.set(this.knife.position.x, yJunction, 0.06);
+        // The strip that has been cut so far peels away from the junction.
+        const overlap = top ? 2.67 - CORNICE_BOTTOM : SKIRTING_TOP - 0.03;
+        if (local > 0.02) {
+          this.overhangStrip.visible = true;
+          this.overhangStrip.scale.set(local * DROP_W, overlap, 1);
+          this.overhangStrip.position.set(left + (local * DROP_W) / 2, top ? CORNICE_BOTTOM + overlap / 2 : 0.03 + overlap / 2, PAPER_Z + 0.02 + local * 0.03);
+          this.overhangStrip.rotation.set((top ? -1 : 1) * (0.35 + local * 0.5), 0, 0);
+        }
+        this.focusWorld.copy(tip);
         this.detailCamOffset.set(0.14, top ? -0.06 : 0.08, 0.38);
-        this.detailTagEl.textContent = top ? "3.5× CORNICE STRAIGHTEDGE TRIM" : "3.5× SKIRTING GUIDED BLADE TRIM";
+        this.detailTagEl.textContent = top ? "CORNICE STRAIGHTEDGE TRIM" : "SKIRTING GUIDED BLADE TRIM";
         break;
       }
       case "match": {
+        this.setDrop(0, { reveal: 1, visible: true, trimTop: 1, trimBottom: 1 });
         this.paste[1].visible = true;
         if (p < 0.24) {
-          const coverage = p / 0.24;
-          this.paste[1].scale.y = Math.max(0.001, coverage);
-          this.paste[1].position.y = 2.67 - (DROP_H * coverage) / 2;
-          this.roller.visible = true;
-          this.roller.position.set(FIRST_X + DROP_W, 0.45 + coverage * 1.75, 0.13);
-          this.focusWorld.copy(this.roller.position);
+          this.rollPaste(this.paste[1], FIRST_X + DROP_W, p / 0.24);
         } else if (p < 0.8) {
-          const rev = (p - 0.24) / 0.56;
-          this.setDrop(1, rev, true);
-          this.focusWorld.set(FIRST_X + DROP_W / 2, 1.45, 0.04);
+          // Second dry drop arrives 4 cm high and 2 cm off the seam, then slides down into pattern match and butts the seam.
+          this.hangDrop(1, (p - 0.24) / 0.56, 0.02, 0.04, 0);
         } else {
-          this.setDrop(1, 1, true);
-          this.smoother.visible = true;
-          const smoothing = (p - 0.8) / 0.2;
-          this.smoother.position.set(
-            FIRST_X + DROP_W * 0.5 + Math.sin(smoothing * 10) * 0.05,
-            2.15 - smoothing * 1.55,
-            0.09,
-          );
-          this.focusWorld.copy(this.smoother.position);
+          this.setDrop(1, { reveal: 1, visible: true });
+          this.smoothStrokes(FIRST_X + DROP_W, (p - 0.8) / 0.2, 2.3);
         }
         this.detailCamOffset.set(0.16, 0.05, 0.4);
-        this.detailTagEl.textContent = "3.5× PATTERN MATCH AT THE SEAM";
+        this.detailTagEl.textContent = "PATTERN MATCH AT THE SEAM";
         break;
       }
       case "outlet": {
-        this.knife.visible = true;
-        this.knife.scale.setScalar(0.82);
-        this.knife.position.set(OUTLET.x - 0.075 + p * 0.15, OUTLET.y + 0.06 - p * 0.12, 0.105);
-        this.knife.rotation.z = -0.75 + p * 1.5;
-
-        // Physically fold the 4 triangular outlet relief flaps outward
-        this.outletFlapsGroup.visible = true;
-        const foldAngle = THREE.MathUtils.clamp((p - 0.15) / 0.65, 0, 1) * 1.35;
-        for (const flap of this.outletFlaps) {
-          const axis = flap.userData.axis as THREE.Vector3;
-          flap.setRotationFromAxisAngle(axis, foldAngle);
+        // Plate off, two relief diagonals cut corner-to-corner, flaps folded back, trim, plate refitted.
+        const hw = 0.075;
+        const hh = 0.05;
+        const cut1 = THREE.MathUtils.clamp((p - 0.08) / 0.3, 0, 1);
+        const cut2 = THREE.MathUtils.clamp((p - 0.42) / 0.3, 0, 1);
+        const a0 = new THREE.Vector3(OUTLET.x - hw, OUTLET.y + hh, PAPER_Z + 0.0005);
+        const a1 = new THREE.Vector3(OUTLET.x + hw, OUTLET.y - hh, PAPER_Z + 0.0005);
+        const b0 = new THREE.Vector3(OUTLET.x + hw, OUTLET.y + hh, PAPER_Z + 0.0005);
+        const b1 = new THREE.Vector3(OUTLET.x - hw, OUTLET.y - hh, PAPER_Z + 0.0005);
+        const c1 = a0.clone().lerp(a1, cut1);
+        const c2 = b0.clone().lerp(b1, cut2);
+        const cutAttr = this.outletCuts.geometry.getAttribute("position") as THREE.BufferAttribute;
+        cutAttr.setXYZ(0, a0.x, a0.y, a0.z + 0.0007);
+        cutAttr.setXYZ(1, c1.x, c1.y, c1.z + 0.0007);
+        cutAttr.setXYZ(2, b0.x, b0.y, b0.z + 0.0007);
+        cutAttr.setXYZ(3, cut2 > 0 ? c2.x : b0.x, cut2 > 0 ? c2.y : b0.y, b0.z + 0.0007);
+        cutAttr.needsUpdate = true;
+        this.outletCuts.geometry.computeBoundingSphere();
+        if (p < 0.74) {
+          const second = p >= 0.42;
+          const from = second ? b0 : a0;
+          const to = second ? b1 : a1;
+          this.knife.visible = true;
+          this.knife.scale.setScalar(0.82);
+          this.knife.quaternion.copy(this.bladeQuaternion(to.clone().sub(from), THREE.MathUtils.degToRad(40)));
+          this.anchorTip(this.knife, tipOfKnife, second ? c2 : c1); // localToWorld already applies the 0.82 scale
+          this.focusWorld.copy(second ? c2 : c1);
+        } else {
+          this.focusWorld.set(OUTLET.x, OUTLET.y, PAPER_Z);
         }
-
-        this.focusWorld.set(OUTLET.x, OUTLET.y, 0.055);
+        this.outletFlapsGroup.visible = p < 0.9;
+        const foldAngle = THREE.MathUtils.smoothstep(p, 0.74, 0.86) * 1.35;
+        this.outletOpening.visible = foldAngle > 0.05 && p < 0.9;
+        for (const flap of this.outletFlaps) {
+          flap.setRotationFromAxisAngle(flap.userData.axis as THREE.Vector3, foldAngle);
+        }
         this.detailCamOffset.set(0.13, 0.05, 0.34);
-        this.detailTagEl.textContent = "3.5× OUTLET RELIEF CUTS (POWER OFF)";
+        this.detailTagEl.textContent = "OUTLET RELIEF CUTS (POWER OFF)";
         break;
       }
       case "clean": {
         this.sponge.visible = true;
-        this.sponge.position.set(FIRST_X + DROP_W / 2 + Math.sin(p * 16) * 0.025, 2.2 - p * 1.65, 0.105);
+        this.sponge.position.set(FIRST_X + DROP_W / 2 + Math.sin(p * 16) * 0.025, 2.2 - p * 1.65, 0);
         this.sponge.rotation.z = Math.sin(p * 12) * 0.22;
-        this.focusWorld.copy(this.sponge.position);
+        this.touch(this.sponge, PAPER_Z + 0.0005);
+        this.focusWorld.set(FIRST_X + DROP_W / 2, this.sponge.position.y, PAPER_Z);
         this.detailCamOffset.set(0.16, 0.06, 0.42);
-        this.detailTagEl.textContent = "3.5× DAMP SPONGE SEAM WIPE";
+        this.detailTagEl.textContent = "DAMP SPONGE SEAM WIPE";
         break;
       }
       case "inspect": {
-        this.focusWorld.set(FIRST_X + DROP_W * 0.5, 1.38, 0.04);
+        // Raking light swings in: the key light drops and a grazing light picks out seam and surface relief.
+        const k = THREE.MathUtils.smoothstep(p, 0.05, 0.4);
+        this.rakeLight.intensity = 3.4 * k;
+        this.keyLight.intensity = 3.35 * (1 - 0.55 * k);
+        this.focusWorld.set(FIRST_X + DROP_W * 0.5, 1.38, PAPER_Z);
         this.detailCamOffset.set(0.22, 0.08, 0.52);
-        this.detailTagEl.textContent = "3.5× RAKING LIGHT SEAM CHECK";
+        this.detailTagEl.textContent = "RAKING LIGHT SEAM CHECK";
         break;
       }
     }
-    if (operation !== "outlet") this.knife.scale.setScalar(1);
+    this.detailTagEl.textContent = `${LOUPE_MAG}× ${this.detailTagEl.textContent}`;
+    this.applyExploded();
     this.applyCurrentViewMaterials();
+    this.buildCallouts();
     // Camera framing depends on the work point computed above, so apply it last.
-    // Interactive: frame once per step (the user may orbit freely afterwards). Export: follow every frame.
-    if (this.exporting || stepChanged) this.cameraPreset(operation);
+    // Export: exact shot every frame (deterministic). Interactive: the shot is the goal the camera eases to.
+    this.computeShot(operation);
+    if (stepChanged) this.followCamera = true;
+    if (this.exporting || firstSeek) this.cameraPreset(operation);
+  }
+
+  setShowLoupe(show: boolean) {
+    this.showLoupe = show;
+    this.insetCanvas.style.display = show ? "block" : "none";
+    this.detailTagEl.style.display = show ? "block" : "none";
+  }
+
+  /** ⇧N: toggle world-anchored part / junction callouts (also burned into exported frames). */
+  setShowCallouts(show: boolean) {
+    this.showCallouts = show;
+    this.buildCallouts();
+  }
+
+  /** ⇧X: 0..1 layer separation (substrate → adhesive bed → wallcovering). Re-applies the current pose. */
+  setExploded(amount: number) {
+    this.exploded = THREE.MathUtils.clamp(amount, 0, 1);
+    const { stepIndex, progress, operation } = this.lastSeek;
+    this.currentStep = stepIndex;
+    this.seek(stepIndex, progress, operation);
+    this.followCamera = true;
+  }
+
+  /** Tools visible in the current pose, for the UI inventory bar's live highlight. */
+  activeToolIds(): ToolId[] {
+    const ids: ToolId[] = ["level", "roller", "smoother", "knife", "straightedge", "fillingKnife", "pasteBrush", "sponge", "pencil", "tape", "voltageTester"];
+    return ids.filter((id) => this[id].visible);
+  }
+
+  /** Current work point in wall coordinates (metres), for the 2D manual figure's live marker. */
+  workPoint(): { x: number; y: number } {
+    return { x: this.focusWorld.x, y: this.focusWorld.y };
+  }
+
+  private applyExploded() {
+    const e = this.exploded;
+    // Fanned like an exploded parts drawing: each layer comes forward and steps left, so every face shows.
+    this.dropsGroup.position.set(-e * 0.24, 0, e * 0.45);
+    // Tools ride with the outermost layer so a smoother never ends up inside the gap.
+    this.toolsGroup.position.set(-e * 0.24, 0, e * 0.45);
+    for (let i = 0; i < this.paste.length; i++) {
+      const lane = this.paste[i];
+      lane.position.z = PASTE_Z + e * 0.22;
+      lane.position.x = this.drops[i].userData.baseX - e * 0.12;
+      // In the exploded view the adhesive bed under every hung drop is shown, even after it is covered.
+      if (e > 0.01 && this.drops[i].visible) {
+        lane.visible = true;
+        lane.scale.y = Math.max(lane.scale.y, 1);
+        lane.position.y = Math.min(lane.position.y, WALL_H / 2);
+      }
+    }
+    this.outletFlapsGroup.position.set(OUTLET.x - e * 0.24, OUTLET.y, PAPER_Z + 0.0006 + e * 0.45);
+  }
+
+  private buildCallouts() {
+    const list: Callout[] = [];
+    if (this.showCallouts) {
+      const tip = (obj: THREE.Object3D, local: [number, number, number]) => obj.localToWorld(new THREE.Vector3(...local));
+      const add = (id: string, label: string, anchor: THREE.Vector3, dir: [number, number]) => list.push({ id, label, anchor, dir });
+      if (this.knife.visible) add("K", "Snap-blade knife · 35° to wall", tip(this.knife, [0.0035, 0.164, 0]), [-1, 0.6]);
+      if (this.straightedge.visible) add("S", "Straightedge", tip(this.straightedge, [0.22, 0, 0]), [1, 0.7]);
+      if (this.level.visible) add("L", "Spirit level", tip(this.level, [0, 0.3, 0.02]), [-1, -0.3]);
+      if (this.pencil.visible) add("P", "Pencil", tip(this.pencil, [0, 0.122, 0]), [1, -0.5]);
+      if (this.roller.visible) add("R", "Paste roller", tip(this.roller, [0, 0, 0.046]), [-1, 0.2]);
+      if (this.pasteBrush.visible) add("B", "Cut-in brush", tip(this.pasteBrush, [0, -0.06, 0]), [1, 0.6]);
+      if (this.smoother.visible) add("M", "Smoother · centre-out", tip(this.smoother, [0.1, -0.05, 0]), [1, 0.4]);
+      if (this.sponge.visible) add("G", "Damp sponge", tip(this.sponge, [0.07, 0, 0]), [1, 0.3]);
+      if (this.tape.visible) add("T", "Tape · height + 2–3 cm", this.focusWorld.clone(), [1, 0.2]);
+      if (this.fillingKnife.visible) add("F", "Filling knife", tip(this.fillingKnife, [0, 0.113, 0]), [1, 0.4]);
+      if (this.voltageTester.visible) add("V", "Voltage tester", tip(this.voltageTester, [0, 0.106, 0]), [-1, 0.5]);
+      if (this.plumbLine.visible) add("1", "Plumb line · 500 mm from corner", new THREE.Vector3(PLUMB_X, 2.2, WALL_FRONT_Z), [1, -0.3]);
+      if (this.outlet.visible || this.outletFlapsGroup.visible) add("2", "Outlet · power isolated", new THREE.Vector3(OUTLET.x + 0.08, OUTLET.y, OUTLET_FRONT_Z), [1, 0.2]);
+      if (this.drops[0].visible || this.currentOperation === "trim") {
+        add("3", "Cornice junction", new THREE.Vector3(FIRST_X + DROP_W * 0.35, CORNICE_BOTTOM, PAPER_Z), [1, -0.6]);
+        add("4", "Skirting junction", new THREE.Vector3(FIRST_X + DROP_W * 0.35, SKIRTING_TOP, PAPER_Z), [1, 0.6]);
+      }
+    }
+    if (this.exploded > 0.01) {
+      const add = (id: string, label: string, anchor: THREE.Vector3, dir: [number, number]) => list.push({ id, label, anchor, dir });
+      {
+        add("A", "Wall substrate (sound, clean, primed)", new THREE.Vector3(FIRST_X + 0.5, 2.1, WALL_FRONT_Z), [1, -0.3]);
+        add("B", "Adhesive bed · wider than drop", new THREE.Vector3(FIRST_X + 0.12 - this.exploded * 0.12, 1.75, PASTE_Z + this.exploded * 0.22), [1, -0.2]);
+        add("C", "Wallcovering drop", new THREE.Vector3(FIRST_X - 0.1 - this.exploded * 0.24, 1.0, PAPER_Z + this.exploded * 0.45), [-1, 0.4]);
+      }
+    }
+    this.callouts = list;
+  }
+
+  private computeShot(operation: Operation) {
+    const shot = this.shotFor(operation);
+    const target = shot.anchor ? shot.anchor.clone().lerp(this.focusWorld, shot.follow) : this.focusWorld.clone();
+    const offset = shot.offset.clone();
+    if (this.exploded > 0.01) {
+      // Swing to a three-quarter side view of the whole drop so the separated layers read as layers.
+      target.lerp(new THREE.Vector3(FIRST_X + 0.05, 1.35, 0.2), this.exploded);
+      // From the open (right) side: the return wall on the left would otherwise block the layer gap.
+      offset.lerp(new THREE.Vector3(0.85, 0.35, 2.0), this.exploded);
+    }
+    this.shotTarget.copy(target);
+    this.shotPosition.copy(target).add(offset);
+  }
+
+  /** Loupe circle in overlay pixels: the logical 1280×720 export layout, or the live CSS box of the loupe element. */
+  private loupeCircle(w: number): { cx: number; cy: number; r: number } {
+    if (this.exporting || this.insetCanvas.offsetWidth === 0) return { cx: w - 16 - 96, cy: 16 + 96, r: 96 };
+    const r = this.insetCanvas.offsetWidth / 2;
+    return { cx: this.insetCanvas.offsetLeft + r, cy: this.insetCanvas.offsetTop + r, r };
   }
 
   /**
@@ -1188,7 +1643,8 @@ export class WallpaperScene implements LessonRenderer {
       case "paste": return { anchor: v(FIRST_X, 1.45, 0.05), follow: 0.35, offset: v(0.5, 0.05, 1.85) };
       case "hang": return { anchor: v(FIRST_X, 1.35, 0.05), follow: 0.5, offset: v(0.6, 0.1, 2.25) };
       case "smooth": return { anchor: null, follow: 0.75, offset: v(0.34, 0.05, 1.25) };
-      case "trim": return { anchor: null, follow: 1, offset: top ? v(0.32, -0.16, 0.85) : v(0.32, 0.26, 0.85) };
+      // Shot from the trailing side so the knife hand is beyond the blade, not between camera and cut.
+      case "trim": return { anchor: null, follow: 1, offset: top ? v(-0.34, -0.16, 0.85) : v(-0.34, 0.26, 0.85) };
       case "match": return { anchor: v(FIRST_X + DROP_W * 0.5, 1.4, 0.05), follow: 0.4, offset: v(0.42, 0.05, 1.85) };
       case "outlet": return { anchor: null, follow: 1, offset: v(0.24, 0.09, 0.62) };
       case "clean": return { anchor: null, follow: 0.6, offset: v(0.34, 0.05, 1.25) };
@@ -1214,9 +1670,18 @@ export class WallpaperScene implements LessonRenderer {
     const arrowFill = isDrawing ? "#141414" : "#22d3ee";
     const arrowStroke = isDrawing ? "#ffffff" : "#050810";
 
-    // 1. Render circular 3.5x Detail Loupe & tangent leader line
+    // 1. Render circular detail loupe & tangent leader line
     if (this.showLoupe && this.insetCtx) {
-      this.detailCamera.position.copy(this.focusWorld).add(this.detailCamOffset);
+      const loupe = this.loupeCircle(w);
+      // Solve the detail-camera distance so the loupe really shows LOUPE_MAG× the main view's on-screen scale:
+      // mag = (loupeDiameter / mainViewHeight) · (D / d) · tan(fovMain/2) / tan(fovDetail/2).
+      // The fixed offsets used before gave 1.0×–2.8× (4.7× on the overview) under a "3.5×" label.
+      const mainH = this.mainViewPx ?? h;
+      const D = this.camera.position.distanceTo(this.focusWorld);
+      const tanMain = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+      const tanDetail = Math.tan(THREE.MathUtils.degToRad(this.detailCamera.fov / 2));
+      const d = Math.max(0.07, ((2 * loupe.r) / mainH) * D * (tanMain / tanDetail) / LOUPE_MAG);
+      this.detailCamera.position.copy(this.focusWorld).addScaledVector(this.detailCamOffset.clone().normalize(), d);
       this.detailCamera.lookAt(this.focusWorld);
       // Match the canvas aspect so the centre-square crop below is undistorted.
       this.detailCamera.aspect = this.renderer.domElement.width / Math.max(1, this.renderer.domElement.height);
@@ -1253,12 +1718,9 @@ export class WallpaperScene implements LessonRenderer {
       // Re-render main camera to the primary canvas
       this.renderer.render(this.scene, this.camera);
 
-      // Leader line from circular loupe circumference to 3D focus point
+      // Leader line from the loupe's actual circumference (108 px on phones, 192 px on desktop) to the work point
       const focus2d = this.projectToScreen(this.focusWorld, w, h);
-      const loupeSize = 192;
-      const cx = w - 16 - loupeSize / 2;
-      const cy = 16 + loupeSize / 2;
-      const r = loupeSize / 2;
+      const { cx, cy, r } = loupe;
       const dx = focus2d.x - cx;
       const dy = focus2d.y - cy;
       const dist = Math.hypot(dx, dy) || 1;
@@ -1311,22 +1773,54 @@ export class WallpaperScene implements LessonRenderer {
       parts.push(`<path d="${arc}" fill="#f59e0b" stroke="#141414" stroke-width="1.3" />`);
     }
 
+    // 3. World-anchored callouts (⇧N): dot on the part, elbow leader, lettered label; labels are nudged
+    //    apart vertically so they never overprint each other.
+    if (this.callouts.length > 0) {
+      const ink = isDrawing ? "#141414" : "#e2e8f0";
+      const paper = isDrawing ? "#ffffff" : "rgba(8,14,25,0.88)";
+      const placed: Array<{ x: number; y: number; w: number }> = [];
+      const maxY = (this.mainViewPx ?? h) - 16; // keep labels above an export caption bar
+      const lc = this.showLoupe ? this.loupeCircle(w) : null;
+      const items = this.callouts
+        .map((c) => ({ c, a: this.projectToScreen(c.anchor, w, h) }))
+        .filter(({ a }) => a.x > -20 && a.x < w + 20 && a.y > -20 && a.y < h + 20)
+        .sort((m, n) => m.a.y - n.a.y);
+      for (const { c, a } of items) {
+        const label = `${c.id}  ${c.label}`;
+        const lw = label.length * 6.3 + 18;
+        let lx = a.x + c.dir[0] * 70;
+        let ly = a.y + c.dir[1] * 46;
+        lx = Math.min(w - lw - 8, Math.max(8, c.dir[0] < 0 ? lx - lw : lx));
+        ly = Math.min(maxY, Math.max(16, ly));
+        // Never print a label under the loupe or its tag.
+        if (lc && lx + lw > lc.cx - lc.r - 8 && ly < lc.cy + lc.r + 34) lx = Math.max(8, lc.cx - lc.r - 12 - lw);
+        for (const q of placed) if (Math.abs(q.y - ly) < 22 && lx < q.x + q.w && lx + lw > q.x) ly = q.y + 24;
+        placed.push({ x: lx, y: ly, w: lw });
+        const ex = c.dir[0] < 0 ? lx + lw : lx;
+        parts.push(
+          `<circle cx="${a.x.toFixed(1)}" cy="${a.y.toFixed(1)}" r="3.2" fill="${ink}" />`,
+          `<path d="M${a.x.toFixed(1)},${a.y.toFixed(1)} L${ex.toFixed(1)},${ly.toFixed(1)}" stroke="${ink}" stroke-width="1.2" fill="none" />`,
+          `<rect x="${lx.toFixed(1)}" y="${(ly - 10).toFixed(1)}" width="${lw.toFixed(1)}" height="20" rx="3" fill="${paper}" stroke="${ink}" stroke-width="1" />`,
+          `<text x="${(lx + 9).toFixed(1)}" y="${(ly + 4).toFixed(1)}" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="10.5" font-weight="700" fill="${ink}">${label.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</text>`,
+        );
+      }
+    }
+
     this.leadsSvg.innerHTML = parts.join("");
   }
 
   private cameraPreset(operation: Operation = this.currentOperation) {
-    const shot = this.shotFor(operation);
-    const target = shot.anchor
-      ? shot.anchor.clone().lerp(this.focusWorld, shot.follow)
-      : this.focusWorld.clone();
-    this.controls.target.copy(target);
-    this.camera.position.copy(target).add(shot.offset);
-    this.camera.lookAt(target);
+    this.computeShot(operation);
+    this.controls.target.copy(this.shotTarget);
+    this.camera.position.copy(this.shotPosition);
+    this.camera.lookAt(this.shotTarget);
     this.controls.update();
   }
 
+  /** R: hand the camera back to the shot (eases there in the live view). */
   resetCamera(operation: Operation = this.currentOperation) {
-    this.cameraPreset(operation);
+    this.computeShot(operation);
+    this.followCamera = true;
   }
 
   private applyView(view: "room" | "drawing") {
@@ -1407,6 +1901,7 @@ export class WallpaperScene implements LessonRenderer {
 
     // Loupe pass + SVG overlays are computed in logical space, then scaled onto the frame.
     const overlays = request.overlays !== false;
+    this.mainViewPx = request.caption ? LH * (Math.max(1, height - captionBarHeight(width, request.caption)) / height) : LH;
     if (overlays) this.renderOverlays(LW, LH);
     const k = width / LW;
     if (overlays && this.leadsSvg.childNodes.length > 0) {
@@ -1473,14 +1968,26 @@ export class WallpaperScene implements LessonRenderer {
     }
   }
 
-  private animate = () => {
+  private animate = (now = 0) => {
     if (this.disposed) return;
     this.frame = requestAnimationFrame(this.animate);
     if (this.exporting) return;
+    const dt = this.lastFrameTime ? Math.min(0.1, (now - this.lastFrameTime) / 1000) : 1 / 60;
+    this.lastFrameTime = now;
+    if (this.followCamera) {
+      // Critically-damped ease toward the operation's shot: the work point stays framed while playing or
+      // scrubbing (it used to be framed once per step, so e.g. the skirting cut happened off-screen).
+      const k = 1 - Math.exp(-dt * 7);
+      this.controls.target.lerp(this.shotTarget, k);
+      this.camera.position.lerp(this.shotPosition, k);
+      this.camera.lookAt(this.controls.target);
+    }
     this.controls.update();
     const width = Math.max(1, this.host.clientWidth);
     const height = Math.max(1, this.host.clientHeight);
-    this.renderer.render(this.scene, this.camera);
+    this.mainViewPx = null;
+    // The loupe pass ends with the main render, so only render here when it is off (was 3 renders/frame).
+    if (!(this.showLoupe && this.insetCtx)) this.renderer.render(this.scene, this.camera);
     this.renderOverlays(width, height);
   };
 
