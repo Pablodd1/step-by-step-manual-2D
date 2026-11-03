@@ -513,9 +513,11 @@ export function createProfiledSkirting(length: number, material: THREE.Material)
     bevelEnabled: false,
     curveSegments: 12,
   });
-  // Rotate so length runs along X axis, profile sits on Y (height) and +Z (projection from wall)
-  geo.rotateY(Math.PI / 2);
-  geo.translate(-length / 2, 0, 0);
+  // Rotate so length runs along X axis, profile sits on Y (height) and +Z (projection from wall).
+  // rotateY(-90°) maps shape X (projection) -> +Z and extrude depth -> -X. The previous rotateY(+90°)
+  // mapped the projection to -Z, burying the whole skirting inside the wall box (z -0.027..-0.005).
+  geo.rotateY(-Math.PI / 2);
+  geo.translate(length / 2, 0, 0);
   geo.computeVertexNormals();
 
   const mesh = new THREE.Mesh(geo, material);
@@ -546,8 +548,8 @@ export function createProfiledCornice(length: number, material: THREE.Material):
     bevelEnabled: false,
     curveSegments: 12,
   });
-  geo.rotateY(Math.PI / 2);
-  geo.translate(-length / 2, 0, 0);
+  geo.rotateY(-Math.PI / 2);
+  geo.translate(length / 2, 0, 0);
   geo.computeVertexNormals();
 
   const mesh = new THREE.Mesh(geo, material);
